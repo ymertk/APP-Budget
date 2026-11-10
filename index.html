@@ -291,11 +291,6 @@ function vOzet(){
   const spent = monthSpent(m);
   const left = inc - oblTotal - spent;
   const openTodos = S.todos.filter(t=>!t.done);
-  const now = today(), in7 = new Date(+now+7*864e5);
-  const upcoming = [];
-  [m, addMonths(m,1)].forEach(mm=>monthObligations(mm).forEach(o=>{ const d=dueDate(mm,o.day); if(!o.paid && d>=now && d<=in7) upcoming.push({...o,date:d,ym:mm}); }));
-  // gecikmiş
-  const overdue = obl.filter(o=>!o.paid && dueDate(m,o.day)<now);
   // kategori dağılımı
   const byCat = {}; varExp(m).forEach(e=>byCat[e.category]=(byCat[e.category]||0)+ +e.amount);
   const cats = Object.entries(byCat).sort((a,b)=>b[1]-a[1]); const maxC = cats[0]?.[1]||1;
@@ -308,16 +303,17 @@ function vOzet(){
     <div class="stat"><div class="l">Échéances + réguliers</div><div class="v">${tl(oblTotal)}</div></div>
     <div class="stat"><div class="l">Dépensé ce mois-ci</div><div class="v">${tl(spent)}</div></div>
   </div>
-  ${overdue.length?`<div class="card" style="border-color:var(--bad)"><h2 class="neg">Paiements en retard</h2>${overdue.map(o=>oblRow(o,m)).join('')}</div>`:''}
-  <div class="card"><h2>7 prochains jours</h2>${upcoming.length?upcoming.map(o=>oblRow(o,o.ym,o.date)).join(''):'<div class="empty">Aucun paiement à venir 🎉</div>'}</div>
+  ${flowCard(m, 'Ce mois-ci')}
   <div class="card"><h2>À faire <button class="btn sm ghost" data-go="todo">Tout voir</button></h2>
     ${openTodos.length? openTodos.slice(0,4).map(todoRow).join('') : '<div class="empty">Aucune tâche en cours</div>'}
   </div>
   <div class="card"><h2>Catégories ce mois-ci</h2>
     ${cats.length? cats.map(([c,v])=>`<div style="margin:8px 0"><div style="display:flex;justify-content:space-between;font-size:14px"><span>${esc(c)}</span><span class="amt">${tl(v)}</span></div><div class="bar"><i style="width:${v/maxC*100}%"></i></div></div>`).join('') : '<div class="empty">Aucune dépense saisie ce mois-ci</div>'}
   </div>`;
+  bindFlow();
   bindCommon();
 }
+function bindFlow(){ $('#view').querySelectorAll('#flowSeg button').forEach(b=>b.onclick=()=>{ flowMode=b.dataset.f; const y=window.scrollY; render(); window.scrollTo(0,y); }); }
 
 function oblRow(o, ymStr, date){
   const d = date || dueDate(ymStr,o.day);
@@ -615,7 +611,7 @@ function vRapor(){
     <p class="note">Ce montant s'applique à partir de ce mois-ci, jusqu'au prochain changement de revenu.</p>
     <div class="actions"><button type="button" class="btn ghost" data-close>Annuler</button><button class="btn">Enregistrer</button></div></form>`,
     d=>{ S.incomeHist[repMonth]=+d.inc||0; if(repMonth===thisYM()) S.settings.income=+d.inc||0; });
-  $('#view').querySelectorAll('#flowSeg button').forEach(b=>b.onclick=()=>{ flowMode=b.dataset.f; const y=window.scrollY; render(); window.scrollTo(0,y); });
+  bindFlow();
   $('#rpm').onclick=()=>{ repMonth=addMonths(repMonth,-1); for(const k in repActive) delete repActive[k]; render(); };
   $('#rnm').onclick=()=>{ if(repMonth<thisYM()){ repMonth=addMonths(repMonth,1); for(const k in repActive) delete repActive[k]; render(); } };
   $('#view').querySelectorAll('[data-pie]').forEach(el=>el.onclick=()=>{ const [id,i]=el.dataset.pie.split(':'); repActive[id] = repActive[id]===+i ? null : +i; const y=window.scrollY; render(); window.scrollTo(0,y); });
@@ -987,14 +983,15 @@ function sankeySVG(fd){
   labels += `<text transform="translate(${X0+W0/2+4},${sTop+sH/2}) rotate(-90)" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff">${fd.inc>=spent?'Revenus ':'Dépenses '}${tl(src)}</text>`;
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block" role="img" aria-label="Flux du budget">${links}${nodes}${labels}</svg>`;
 }
-function flowCard(){
+function flowCard(month, label){
+  month = month || repMonth;
   if(!flowMode) flowMode = S.expenses.some(e=>e.src==='import') ? 'avg' : 'month';
-  const months = flowMode==='avg' ? avgMonths() : [repMonth];
+  const months = flowMode==='avg' ? avgMonths() : [month];
   const fd = flowData(months);
   const spent = fd.leaves.reduce((s,l)=>s+l.value,0), left=fd.inc-spent;
-  const per = flowMode==='avg' ? (months.length>1 ? `Moyenne de ${months.length} mois · ${monthName(months[0])} → ${monthName(months[months.length-1])}` : monthName(months[0])) : monthName(repMonth);
+  const per = flowMode==='avg' ? (months.length>1 ? `Moyenne de ${months.length} mois · ${monthName(months[0])} → ${monthName(months[months.length-1])}`   : monthName(months[0])) : monthName(month);
   return `<div class="card"><h2>Flux du budget</h2>
-    <div class="seg" id="flowSeg"><button data-f="month" class="${flowMode==='month'?'on':''}">Mois affiché</button><button data-f="avg" class="${flowMode==='avg'?'on':''}">Moyenne mensuelle</button></div>
+    <div class="seg" id="flowSeg"><button data-f="month" class="${flowMode==='month'?'on':''}">${label||'Mois affiché'}</button><button data-f="avg" class="${flowMode==='avg'?'on':''}">Moyenne mensuelle</button></div>
     <div class="note" style="margin-bottom:6px">${per} · revenus ${tl(fd.inc)} · dépenses ${tl(spent)}${fd.inc?` · <span class="${left<0?'neg':'pos'}">${left<0?'':'+'}${tl(left)}</span>`:''}</div>
     ${sankeySVG(fd)}</div>`;
 }
