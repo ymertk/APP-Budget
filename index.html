@@ -493,7 +493,7 @@ function deleteRec(id){
   const end = (r.paid||[]).includes(m) ? m : addMonths(m,-1);
   if(!r.start || r.start>end){ S.recurring=S.recurring.filter(x=>x.id!==id); S.expenses.forEach(e=>{ if(e.recId===id) delete e.recId; }); }
   else { r.end=end; r.deleted=true; S.expenses.forEach(e=>{ if(e.recId===id && e.date.slice(0,7)>end) delete e.recId; }); }
-  if(r.match) S.catRules['__ignore_'+r.match]=1;
+  if(r.match) S.catRules['__ignore_'+r.match+(r.matchAmt?'#'+Math.round(r.matchAmt):'')]=1;
 }
 function recForm(r){
   r = r||{day:1, category:'Factures'};
@@ -644,7 +644,7 @@ $('#btnSettings').onclick=()=>{
 };
 
 /* ================== IMPORT DE RELEVÉS ================== */
-const STOP = new Set(['CB','CARTE','PRLV','PRELEVEMENT','PRELEV','SEPA','VIR','VIREMENT','VIRT','INST','INSTANTANE','RECU','EMIS','PAIEMENT','PAIE','ACHAT','FACTURE','FACT','DU','LE','LA','LES','DE','DES','ET','AU','MOTIF','REF','REFERENCE','ECH','MDT','ID','NUM','NO','PAR','POUR','EUR','EURO','EUROS','RETRAIT','DAB','OPERATION','OP','FRAIS','CARD','PAYMENT','TO','FROM','SAS','SARL','SA','FR','WWW','COM','HTTPS','HTTP','PAYPAL','EUROPE','SCA','TRANSFER','PERMANENT','VERS','INSTANT','IMMEDIAT','PRELEVT','SEPA','DATE','CPTE','COMPTE']);
+const STOP = new Set(['CB','CARTE','PRLV','PRELEVEMENT','PRELEV','SEPA','VIR','VIREMENT','VIRT','INST','INSTANTANE','RECU','EMIS','PAIEMENT','PAIE','ACHAT','FACTURE','FACT','DU','LE','LA','LES','DE','DES','ET','AU','MOTIF','REF','REFERENCE','ECH','MDT','ID','NUM','NO','PAR','POUR','EUR','EURO','EUROS','RETRAIT','DAB','OPERATION','OP','FRAIS','CARD','PAYMENT','TO','FROM','SAS','SARL','SA','FR','WWW','COM','HTTPS','HTTP','SCA','TRANSFER','PERMANENT','VERS','M','MR','MME','MLLE','MLE','MADAME','MONSIEUR','INSTANT','IMMEDIAT','PRELEVT','SEPA','DATE','CPTE','COMPTE']);
 const stripAcc = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'');
 function txKey(label){
   const w = stripAcc(label).toUpperCase().replace(/[^A-Z ]+/g,' ').split(/\s+/).filter(x=>x.length>1 && !STOP.has(x));
@@ -652,17 +652,17 @@ function txKey(label){
 }
 const prettyKey = k => k ? k.toLowerCase().replace(/\b[a-z]/g,c=>c.toUpperCase()) : '';
 const CAT_RULES = [
-  ['Épargne', /LIVRET|EPARGNE|\bPEA\b|ASSURANCE VIE|ASS VIE|BOURSE|TRADE REPUBLIC|BOURSORAMA PLACEMENT|LINXEA|YOMONI|NALO|COINBASE|BINANCE|CRYPTO|FINARY/],
-  ['Loyer', /LOYER|FONCIA|NEXITY|CITYA|ORPI|CENTURY|AGENCE IMMO|SYNDIC|BAILLEUR|CREDIT IMMO|PRET IMMO|ECHEANCE PRET/],
+  ['Épargne', /LIVRET|EPARGNE|SURAVENIR|SPIRICA|GENERALI VIE|PREDICA|\bPEA\b|ASSURANCE VIE|ASS VIE|BOURSE|TRADE REPUBLIC|BOURSORAMA PLACEMENT|LINXEA|YOMONI|NALO|COINBASE|BINANCE|CRYPTO|FINARY/],
+  ['Loyer', /LOYER|PRET IMMO|FONCIA|NEXITY|CITYA|ORPI|CENTURY|AGENCE IMMO|SYNDIC|BAILLEUR|CREDIT IMMO|PRET IMMO|ECHEANCE PRET/],
   ['Abonnements', /NETFLIX|SPOTIFY|DISNEY|CANAL|DEEZER|PRIME VIDEO|AMAZON PRIME|APPLE COM|APPLE\.COM|ITUNES|ICLOUD|GOOGLE|YOUTUBE|PLAYSTATION|XBOX|NINTENDO|STEAM|ADOBE|MICROSOFT|OPENAI|CHATGPT|ANTHROPIC|CLAUDE|DROPBOX|BASIC FIT|FITNESS|NEONESS|ON AIR|KEEP COOL|SALLE DE SPORT|ABONNEMENT|ABO\b|PATREON|TWITCH|DUOLINGO|AUDIBLE|KINDLE|MOLOTOV|PARAMOUNT|CRUNCHYROLL|GITHUB|NOTION|LINKEDIN|TINDER|MEETIC/],
-  ['Factures', /\bEDF\b|ENGIE|TOTALENERGIES|TOTAL ENERGIES|EKWATEUR|OCTOPUS|ORANGE|\bSFR\b|BOUYGUES|\bFREE\b|FREE MOBILE|SOSH|RED BY|\bEAU\b|VEOLIA|SUEZ|SAUR|ASSURANCE|MAIF|MACIF|MAAF|\bAXA\b|MATMUT|ALLIANZ|GROUPAMA|GMF|DIRECT ASSURANCE|LUKO|LEMONADE|IMPOT|DGFIP|TRESOR PUBLIC|TAXE|URSSAF|ELECTRICITE|\bGAZ\b/],
-  ['Santé', /PHARMACIE|PHARMA|DOCTEUR|\bDR\b|MEDECIN|DOCTOLIB|MUTUELLE|CPAM|AMELI|HOPITAL|CLINIQUE|DENTISTE|DENTAIRE|OPTIC|OPTIQUE|KINE|LABORATOIRE|ALAN\b/],
-  ['Courses', /CARREFOUR|LECLERC|AUCHAN|\bLIDL\b|INTERMARCHE|MONOPRIX|FRANPRIX|CASINO|SUPER U|HYPER U|SYSTEME U|\bU EXPRESS|PICARD|\bALDI\b|NETTO|\bG20\b|SPAR|NATURALIA|BIOCOOP|GRAND FRAIS|CORA|MATCH|PROXI|MARKET|SUPERMARCHE|EPICERIE|PRIMEUR|BOUCHERIE|DIA\b/],
+  ['Factures', /\bEDF\b|EAUX|SAVELYS|ENGIE|AVANSSUR|SOGESSUR|OLIVIER ASSUR|ADMIRAL|PACIFICA|SWISSLIFE|APRIL|ENGIE|TOTALENERGIES|TOTAL ENERGIES|EKWATEUR|OCTOPUS|ORANGE|\bSFR\b|BOUYGUES|\bFREE\b|FREE MOBILE|SOSH|RED BY|\bEAU\b|VEOLIA|SUEZ|SAUR|ASSURANCE|MAIF|MACIF|MAAF|\bAXA\b|MATMUT|ALLIANZ|GROUPAMA|GMF|DIRECT ASSURANCE|LUKO|LEMONADE|IMPOT|DGFIP|TRESOR PUBLIC|TAXE|URSSAF|ELECTRICITE|\bGAZ\b/],
+  ['Santé', /PHARMACIE|\bPHIE\b|PHAMARCIE|PHARMA|VETERINAIRE|ANICURA|PHARMA|DOCTEUR|\bDR\b|MEDECIN|DOCTOLIB|MUTUELLE|CPAM|AMELI|HOPITAL|CLINIQUE|DENTISTE|DENTAIRE|OPTIC|OPTIQUE|KINE|LABORATOIRE|ALAN\b/],
+  ['Courses', /HELLOFRESH|QUITOQUE|\bCRF\b|INTERM|BOUCHER|ZOOPLUS|CARREFOUR|LECLERC|AUCHAN|\bLIDL\b|INTERMARCHE|MONOPRIX|FRANPRIX|CASINO|SUPER U|HYPER U|SYSTEME U|\bU EXPRESS|PICARD|\bALDI\b|NETTO|\bG20\b|SPAR|NATURALIA|BIOCOOP|GRAND FRAIS|CORA|MATCH|PROXI|MARKET|SUPERMARCHE|EPICERIE|PRIMEUR|BOUCHERIE|DIA\b/],
   ['Restaurants', /RESTAU|MCDO|MC DO|MCDONALD|BURGER|\bKFC\b|UBER EATS|UBEREATS|DELIVEROO|JUST EAT|STARBUCKS|BOULANG|PATISSERIE|\bCAFE\b|BRASSERIE|PIZZA|SUSHI|KEBAB|TACOS|O TACOS|BISTRO|\bBAR\b|PAUL\b|COLUMBUS|FIVE GUYS|SUBWAY|DOMINO|PRET A MANGER|BAGEL|CREPERIE/],
-  ['Transport', /SNCF|\bRATP\b|NAVIGO|\bUBER\b|BOLT|HEETCH|\bG7\b|TAXI|TOTAL\b|ESSO|SHELL|\bBP\b|AVIA|STATION|CARBURANT|PEAGE|AUTOROUTE|SANEF|APRR|VINCI|BLABLACAR|PARKING|INDIGO|LIME|DOTT|TIER|VELIB|TCL|TRANSDEV|KEOLIS|RYANAIR|EASYJET|AIR FRANCE|TRANSAVIA|VOLOTEA|OUIGO|TRAINLINE|FLIXBUS/],
+  ['Transport', /CREDIPAR|STELLANTIS|LEASYS|\bDIAC\b|RENTAL|CAR RENT|LOCATION VOITURE|ULYS|BIP GO|EASYPARK|PAYBYPHONE|PETROL|CARBU|\bESSO\b|NORAUTO|SPEEDY|MIDAS|FEU VERT|AUTOCONTROL|CONTROLE TECH|SNCF|\bRATP\b|NAVIGO|\bUBER\b|BOLT|HEETCH|\bG7\b|TAXI|TOTAL\b|ESSO|SHELL|\bBP\b|AVIA|STATION|CARBURANT|PEAGE|AUTOROUTE|SANEF|APRR|VINCI|BLABLACAR|PARKING|INDIGO|LIME|DOTT|TIER|VELIB|TCL|TRANSDEV|KEOLIS|RYANAIR|EASYJET|AIR FRANCE|TRANSAVIA|VOLOTEA|OUIGO|TRAINLINE|FLIXBUS/],
   ['Vêtements', /ZARA|\bH M\b|\bHM\b|H&M|KIABI|DECATHLON|UNIQLO|PRIMARK|VINTED|ZALANDO|SHEIN|JULES|CELIO|BERSHKA|PULL BEAR|MANGO|NIKE|ADIDAS|FOOT LOCKER|COURIR|SPORT 2000|INTERSPORT|GO SPORT|LACOSTE|GALERIES LAFAYETTE|PRINTEMPS/],
-  ['Loisirs', /CINEMA|\bUGC\b|PATHE|GAUMONT|MK2|FNAC|CULTURA|DARTY|BOULANGER|AMAZON|AMZN|CDISCOUNT|IKEA|LEROY MERLIN|CASTORAMA|ACTION\b|MUSEE|CONCERT|TICKETMASTER|BILLETTERIE|BOOKING|AIRBNB|HOTEL|SEPHORA|NOCIBE|MARIONNAUD|COIFF|BARBER/],
-  ['Éducation', /ECOLE|UNIVERSITE|UNIV\b|LYCEE|COLLEGE|UDEMY|COURSERA|OPENCLASSROOMS|LIBRAIRIE|CANTINE|CRECHE|FORMATION/],
+  ['Loisirs', /PLANITY|TEMU|ALIEXPRESS|CINEMA|\bUGC\b|PATHE|GAUMONT|MK2|FNAC|CULTURA|DARTY|BOULANGER|AMAZON|AMZN|CDISCOUNT|IKEA|LEROY MERLIN|CASTORAMA|ACTION\b|MUSEE|CONCERT|TICKETMASTER|BILLETTERIE|BOOKING|AIRBNB|HOTEL|SEPHORA|NOCIBE|MARIONNAUD|COIFF|BARBER/],
+  ['Éducation', /TOM ET JOSETTE|TOM JOSETTE|CRECHE|NOUNOU|PAJEMPLOI|ECOLE|UNIVERSITE|UNIV\b|LYCEE|COLLEGE|UDEMY|COURSERA|OPENCLASSROOMS|LIBRAIRIE|CANTINE|CRECHE|FORMATION/],
 ];
 function guessCat(label, key){
   if(key && S.catRules[key]) return S.catRules[key];
@@ -837,28 +837,45 @@ function recurringGroups(list, minAmt){
   const nM = importedMonths().length, minM = nM>=4 ? 3 : 2;
   const g={}; list.forEach(x=>{ if(x.key) (g[x.key]=g[x.key]||[]).push(x); });
   const out=[];
+  const clusters=[];
   Object.entries(g).forEach(([key,arr])=>{
+    const nm=new Set(arr.map(x=>x.date.slice(0,7))).size;
+    if(arr.length<=nm*1.5){ clusters.push([key,arr,null]); return; }
+    if(arr.length>nm*3) return;
+    // plusieurs prélèvements par mois chez le même organisme : on sépare par montant
+    const srt=[...arr].sort((a,b)=>a.amount-b.amount); let cur=[srt[0]];
+    for(let i=1;i<srt.length;i++){ const prev=cur[cur.length-1]; if(srt[i].amount-prev.amount <= Math.max(0.5, prev.amount*0.03)) cur.push(srt[i]); else { clusters.push([key,cur,1]); cur=[srt[i]]; } }
+    clusters.push([key,cur,1]);
+  });
+  const lastData = importedMonths().slice(-1)[0];
+  clusters.forEach(([key,arr,split])=>{
     const months=[...new Set(arr.map(x=>x.date.slice(0,7)))].sort();
-    if(months.length<minM || arr.length>months.length*1.5) return;
+    if(months.length<minM || arr.length>months.length*(split?1:1.5)) return;
+    // encore actif (vu dans les 2 derniers mois) et régulier (au moins 70 % des mois entre le premier et le dernier)
+    if(lastData && months[months.length-1] < addMonths(lastData,-2)) return;
+    if(months.length < 0.7*(monthDiff(months[0],months[months.length-1])+1)) return;
     const am=arr.map(x=>+x.amount), med=median(am);
     if(med<(minAmt||1)) return;
     if(am.filter(a=>Math.abs(a-med)<=Math.max(2,med*0.25)).length < arr.length*0.75) return;
     const recent=[...arr].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3).map(x=>+x.amount);
     const cats={}; arr.forEach(x=>cats[x.category]=(cats[x.category]||0)+1);
-    out.push({key, name:prettyKey(key), amount:Math.round(median(recent)*100)/100, day:Math.round(median(arr.map(x=>+x.date.slice(8,10)))), months, category:Object.entries(cats).sort((a,b)=>b[1]-a[1])[0]?.[0]||'Autre', n:arr.length});
+    out.push({key, split:!!split, name:prettyKey(key)+(split?' '+tl2(median(am)):''), amount:Math.round(median(recent)*100)/100, day:Math.round(median(arr.map(x=>+x.date.slice(8,10)))), months, category:Object.entries(cats).sort((a,b)=>b[1]-a[1])[0]?.[0]||'Autre', n:arr.length});
   });
   return out.sort((a,b)=>b.amount-a.amount);
 }
 function detectRecurring(){
-  const known = new Set(S.recurring.map(r=>r.match).filter(Boolean));
-  return recurringGroups(S.expenses.filter(e=>e.src==='import' && !e.recId), 1).filter(c=>!known.has(c.key) && !S.catRules['__ignore_'+c.key]);
+  return recurringGroups(S.expenses.filter(e=>e.src==='import' && !e.recId), 1).filter(c=>!S.recurring.some(r=>matches(r,c.key,c.amount)) && !S.catRules['__ignore_'+c.key+(c.split?'#'+Math.round(c.amount):'')]);
 }
-function detectIncome(){ return recurringGroups(S.credits, 300)[0] || null; }
+function detectIncome(){
+  const g = recurringGroups(S.credits, 300); if(!g.length) return null;
+  return {amount:Math.round(g.reduce((s,x)=>s+x.amount,0)*100)/100, name:g.map(x=>x.name+' '+tl(x.amount)).join(' + '), months:[g.map(x=>x.months[0]).sort()[0]], n:Math.max(...g.map(x=>x.months.length))};
+}
+const matches = (r,key,amount) => r.match===key && (!r.matchAmt || Math.abs(amount-r.matchAmt) <= Math.max(0.5, r.matchAmt*0.04));
 function autoLink(){
   S.recurring.forEach(r=>{
     if(!r.match) return;
     const byM={};
-    S.expenses.forEach(e=>{ if(e.key===r.match && (!e.recId || e.recId===r.id)){ e.recId=r.id; const m=e.date.slice(0,7); byM[m]=(byM[m]||0)+ +e.amount; } });
+    S.expenses.forEach(e=>{ if(matches(r,e.key,+e.amount) && (!e.recId || e.recId===r.id)){ e.recId=r.id; const m=e.date.slice(0,7); byM[m]=(byM[m]||0)+ +e.amount; } });
     r.paid=r.paid||[]; r.paidAmt=r.paidAmt||{};
     Object.entries(byM).forEach(([m,v])=>{ if(!r.paid.includes(m)) r.paid.push(m); r.paidAmt[m]=Math.round(v*100)/100; if(!r.start||m<r.start) r.start=m; });
   });
@@ -870,7 +887,7 @@ function openDetect(afterImport){
   openSheet(`<form><h3>🔍 Dépenses régulières détectées</h3>
     <p class="note">Ces opérations reviennent chaque mois avec un montant proche. Coche celles à suivre dans <b>Paiements → Paiements réguliers</b> : elles seront marquées payées pour les mois passés et ne seront plus comptées en double dans les dépenses.</p>
     ${inc?`<div class="card" style="margin:10px 0"><label style="display:flex;gap:10px;align-items:center;color:var(--ink);font-size:14px;margin:0"><input type="checkbox" name="inc" ${S.settings.income?'':'checked'} style="width:22px;height:22px;flex:none">
-      <span><b>Revenu mensuel : ${tl(inc.amount)}</b><br><span class="note">${esc(inc.name)} · ${inc.months.length} mois${S.settings.income?' · actuellement '+tl(S.settings.income):''}</span></span></label></div>`:''}
+      <span><b>Revenu mensuel : ${tl(inc.amount)}</b><br><span class="note">${esc(inc.name)}${S.settings.income?' · actuellement '+tl(S.settings.income):''}</span></span></label></div>`:''}
     ${cands.map((c,i)=>`<div class="row" style="flex-wrap:wrap;gap:8px">
       <input type="checkbox" name="c${i}" checked style="width:22px;height:22px;flex:none">
       <div class="grow"><input name="n${i}" value="${esc(c.name)}" style="padding:6px 8px">
@@ -881,7 +898,7 @@ function openDetect(afterImport){
     let n=0;
     cands.forEach((c,i)=>{ if(!d['c'+i]) return; n++;
       const cat=d['k'+i]||c.category;
-      S.recurring.push({id:uid(), name:(d['n'+i]||c.name).trim()||c.name, amount:c.amount, day:Math.min(31,Math.max(1,c.day||1)), category:cat, match:c.key, paid:[], paidAmt:{}, start:c.months[0]});
+      S.recurring.push({id:uid(), name:(d['n'+i]||c.name).trim()||c.name, amount:c.amount, day:Math.min(31,Math.max(1,c.day||1)), category:cat, match:c.key, matchAmt:c.split?c.amount:undefined, paid:[], paidAmt:{}, start:c.months[0]});
       if(cat!==c.category){ S.catRules[c.key]=cat; S.expenses.forEach(e=>{ if(e.key===c.key) e.category=cat; }); }
     });
     autoLink();
