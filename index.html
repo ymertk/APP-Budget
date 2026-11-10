@@ -195,7 +195,7 @@ function browserReminderTick(){
 const fmtDT = d => d.toLocaleString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
 
-const CATS = ['Courses','Restaurants','Transport','Factures','Loyer','Abonnements','Santé','Vêtements','Loisirs','Éducation','Épargne','Autre'];
+const CATS = ['Courses','Restaurants','Transport','Voiture','Factures','Assurances','Loyer','Abonnements','Santé','Vêtements','Loisirs','Éducation','Eda','Bali','Épargne','Autre'];
 const tl = n => (isFinite(n)?n:0).toLocaleString('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:0});
 const tl2 = n => (isFinite(n)?n:0).toLocaleString('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:2});
 const num = (n,d=2) => (isFinite(n)?n:0).toLocaleString('fr-FR',{maximumFractionDigits:d});
@@ -412,7 +412,7 @@ function vHarcama(){
       <button class="icon" id="nm">›</button></div>
     <button class="btn ghost" id="impBtn" style="width:100%">📥 Importer des relevés bancaires (CSV)</button>
     ${list.length? Object.entries(groups).map(([d,arr])=>`<div class="card"><h2><span>${new Date(d+'T00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</span><span class="amt">${tl2(arr.filter(e=>!e.recId).reduce((s,e)=>s+ +e.amount,0))}</span></h2>
-      ${arr.map(e=>`<div class="row"><div class="grow" data-edit-exp="${e.id}"><div class="t">${esc(e.note||e.category)}</div><div class="s">${e.recId?'🔁 Paiement régulier · ':''}${esc(e.category)}</div></div><div class="amt" style="${e.recId?'color:var(--mute)':''}">${tl2(+e.amount)}</div><button class="icon" data-del-exp="${e.id}">🗑</button></div>`).join('')}</div>`).join('')
+      ${arr.map(e=>`<div class="row"><div class="grow" data-edit-exp="${e.id}"><div class="t">${esc(e.note||e.category)}</div><div class="s">${e.recId?'🔁 Paiement régulier · ':''}${esc(e.category)}</div></div><div class="amt" style="${e.recId?'color:var(--mute)':e.amount<0?'color:var(--ok)':''}">${e.amount<0?'+'+tl2(-e.amount):tl2(+e.amount)}</div><button class="icon" data-del-exp="${e.id}">🗑</button></div>`).join('')}</div>`).join('')
     : '<div class="card"><div class="empty">Aucune dépense ce mois-ci. Ajoute-en avec +.</div></div>'}`;
   $('#impBtn').onclick=pickFiles;
   $('#pm').onclick=()=>{ expMonth=addMonths(expMonth,-1); render(); };
@@ -423,12 +423,12 @@ function vHarcama(){
 function expForm(e){
   e = e||{date:new Date().toISOString().slice(0,10), category:'Courses'};
   openSheet(`<form><h3>${e.id?'Modifier la dépense':'Nouvelle dépense'}</h3>
-    <label>Montant (€)</label><input name="amount" type="number" inputmode="decimal" step="0.01" min="0" required value="${esc(e.amount||'')}">
+    <label>${e.refund?'Montant reçu (€) · déduit de la catégorie':'Montant (€)'}</label><input name="amount" type="number" inputmode="decimal" step="0.01" min="0" required value="${esc(e.refund?-e.amount:(e.amount||''))}">
     <div class="grid2"><div><label>Date</label><input type="date" name="date" required value="${esc(e.date)}"></div>
     <div><label>Catégorie</label><select name="category">${CATS.map(c=>`<option ${e.category===c?'selected':''}>${c}</option>`).join('')}</select></div></div>
     <label>Description</label><input name="note" value="${esc(e.note||'')}" placeholder="Ex. Courses de la semaine">
     <div class="actions"><button type="button" class="btn ghost" data-close>Annuler</button><button class="btn">Enregistrer</button></div></form>`,
-  d=>{ d.amount=+d.amount; const old=e.category;
+  d=>{ d.amount=e.refund ? -Math.abs(+d.amount) : +d.amount; const old=e.category;
     if(e.id) Object.assign(e,d); else S.expenses.push({id:uid(),...d}); expMonth=d.date.slice(0,7);
     if(e.id && e.key && old!==d.category){ S.catRules[e.key]=d.category; let n=0; S.expenses.forEach(x=>{ if(x!==e && x.key===e.key && x.category!==d.category){ x.category=d.category; n++; } }); if(n) setTimeout(()=>toast('Catégorie appliquée aussi à '+n+' opération'+(n>1?'s':'')+' semblable'+(n>1?'s':'')),50); } });
 }
@@ -653,17 +653,24 @@ function txKey(label){
 const prettyKey = k => k ? k.toLowerCase().replace(/\b[a-z]/g,c=>c.toUpperCase()) : '';
 const CAT_RULES = [
   ['Épargne', /LIVRET|EPARGNE|SURAVENIR|SPIRICA|GENERALI VIE|PREDICA|\bPEA\b|ASSURANCE VIE|ASS VIE|BOURSE|TRADE REPUBLIC|BOURSORAMA PLACEMENT|LINXEA|YOMONI|NALO|COINBASE|BINANCE|CRYPTO|FINARY/],
+  ['Bali', /ZOOPLUS/],
+  ['Assurances', /ASSURANCE|ASSURA|\bASSUR|AVANSSUR|SOGESSUR|OLIVIER|ADMIRAL|PACIFICA|SWISSLIFE|\bAPRIL\b|HISCOX|MAIF|MACIF|MAAF|\bAXA\b|MATMUT|ALLIANZ|GROUPAMA|\bGMF\b|LUKO|LEMONADE|ACHEEL|LEOCARE|AMV\b|GENERALI(?! VIE)/],
+  ['Voiture', /CREDIPAR|STELLANTIS|LEAPMOTOR|LEASYS|\bDIAC\b|ULYS|BIP GO|EASYPARK|PAYBYPHONE|STATIONNEM|HOROD|PARKING|INDIGO|PEAGE|AUTOROUTE|SANEF|APRR|VINCI AUTO|PETROL|CARBU|\bESSO\b|\bTOTAL\b|SHELL|\bBP\b|AVIA|STATION|NORAUTO|SPEEDY|MIDAS|FEU VERT|AUTOCONTROL|CONTROLE TECH|CARTE GRISE|ANTS/],
   ['Loyer', /LOYER|PRET IMMO|FONCIA|NEXITY|CITYA|ORPI|CENTURY|AGENCE IMMO|SYNDIC|BAILLEUR|CREDIT IMMO|PRET IMMO|ECHEANCE PRET/],
   ['Abonnements', /NETFLIX|SPOTIFY|DISNEY|CANAL|DEEZER|PRIME VIDEO|AMAZON PRIME|APPLE COM|APPLE\.COM|ITUNES|ICLOUD|GOOGLE|YOUTUBE|PLAYSTATION|XBOX|NINTENDO|STEAM|ADOBE|MICROSOFT|OPENAI|CHATGPT|ANTHROPIC|CLAUDE|DROPBOX|BASIC FIT|FITNESS|NEONESS|ON AIR|KEEP COOL|SALLE DE SPORT|ABONNEMENT|ABO\b|PATREON|TWITCH|DUOLINGO|AUDIBLE|KINDLE|MOLOTOV|PARAMOUNT|CRUNCHYROLL|GITHUB|NOTION|LINKEDIN|TINDER|MEETIC/],
-  ['Factures', /\bEDF\b|EAUX|SAVELYS|ENGIE|AVANSSUR|SOGESSUR|OLIVIER ASSUR|ADMIRAL|PACIFICA|SWISSLIFE|APRIL|ENGIE|TOTALENERGIES|TOTAL ENERGIES|EKWATEUR|OCTOPUS|ORANGE|\bSFR\b|BOUYGUES|\bFREE\b|FREE MOBILE|SOSH|RED BY|\bEAU\b|VEOLIA|SUEZ|SAUR|ASSURANCE|MAIF|MACIF|MAAF|\bAXA\b|MATMUT|ALLIANZ|GROUPAMA|GMF|DIRECT ASSURANCE|LUKO|LEMONADE|IMPOT|DGFIP|TRESOR PUBLIC|TAXE|URSSAF|ELECTRICITE|\bGAZ\b/],
+  ['Factures', /\bEDF\b|EAUX|SAVELYS|ENGIE|ENGIE|TOTALENERGIES|TOTAL ENERGIES|EKWATEUR|OCTOPUS|ORANGE|\bSFR\b|BOUYGUES|\bFREE\b|FREE MOBILE|SOSH|RED BY|\bEAU\b|VEOLIA|SUEZ|SAUR|IMPOT|DGFIP|TRESOR PUBLIC|TAXE|URSSAF|ELECTRICITE|\bGAZ\b/],
   ['Santé', /PHARMACIE|\bPHIE\b|PHAMARCIE|PHARMA|VETERINAIRE|ANICURA|PHARMA|DOCTEUR|\bDR\b|MEDECIN|DOCTOLIB|MUTUELLE|CPAM|AMELI|HOPITAL|CLINIQUE|DENTISTE|DENTAIRE|OPTIC|OPTIQUE|KINE|LABORATOIRE|ALAN\b/],
-  ['Courses', /HELLOFRESH|QUITOQUE|\bCRF\b|INTERM|BOUCHER|ZOOPLUS|CARREFOUR|LECLERC|AUCHAN|\bLIDL\b|INTERMARCHE|MONOPRIX|FRANPRIX|CASINO|SUPER U|HYPER U|SYSTEME U|\bU EXPRESS|PICARD|\bALDI\b|NETTO|\bG20\b|SPAR|NATURALIA|BIOCOOP|GRAND FRAIS|CORA|MATCH|PROXI|MARKET|SUPERMARCHE|EPICERIE|PRIMEUR|BOUCHERIE|DIA\b/],
+  ['Courses', /HELLOFRESH|QUITOQUE|\bCRF\b|INTERM|BOUCHER|CARREFOUR|LECLERC|AUCHAN|\bLIDL\b|INTERMARCHE|MONOPRIX|FRANPRIX|CASINO|SUPER U|HYPER U|SYSTEME U|\bU EXPRESS|PICARD|\bALDI\b|NETTO|\bG20\b|SPAR|NATURALIA|BIOCOOP|GRAND FRAIS|CORA|MATCH|PROXI|MARKET|SUPERMARCHE|EPICERIE|PRIMEUR|BOUCHERIE|DIA\b/],
   ['Restaurants', /RESTAU|MCDO|MC DO|MCDONALD|BURGER|\bKFC\b|UBER EATS|UBEREATS|DELIVEROO|JUST EAT|STARBUCKS|BOULANG|PATISSERIE|\bCAFE\b|BRASSERIE|PIZZA|SUSHI|KEBAB|TACOS|O TACOS|BISTRO|\bBAR\b|PAUL\b|COLUMBUS|FIVE GUYS|SUBWAY|DOMINO|PRET A MANGER|BAGEL|CREPERIE/],
-  ['Transport', /CREDIPAR|STELLANTIS|LEASYS|\bDIAC\b|RENTAL|CAR RENT|LOCATION VOITURE|ULYS|BIP GO|EASYPARK|PAYBYPHONE|PETROL|CARBU|\bESSO\b|NORAUTO|SPEEDY|MIDAS|FEU VERT|AUTOCONTROL|CONTROLE TECH|SNCF|\bRATP\b|NAVIGO|\bUBER\b|BOLT|HEETCH|\bG7\b|TAXI|TOTAL\b|ESSO|SHELL|\bBP\b|AVIA|STATION|CARBURANT|PEAGE|AUTOROUTE|SANEF|APRR|VINCI|BLABLACAR|PARKING|INDIGO|LIME|DOTT|TIER|VELIB|TCL|TRANSDEV|KEOLIS|RYANAIR|EASYJET|AIR FRANCE|TRANSAVIA|VOLOTEA|OUIGO|TRAINLINE|FLIXBUS/],
-  ['Vêtements', /ZARA|\bH M\b|\bHM\b|H&M|KIABI|DECATHLON|UNIQLO|PRIMARK|VINTED|ZALANDO|SHEIN|JULES|CELIO|BERSHKA|PULL BEAR|MANGO|NIKE|ADIDAS|FOOT LOCKER|COURIR|SPORT 2000|INTERSPORT|GO SPORT|LACOSTE|GALERIES LAFAYETTE|PRINTEMPS/],
+  ['Transport', /RENTAL|CAR RENT|LOCATION VOITURE|SNCF|\bRATP\b|NAVIGO|\bUBER\b|BOLT|HEETCH|\bG7\b|TAXI|BLABLACAR|LIME|DOTT|TIER|VELIB|TCL|TRANSDEV|KEOLIS|RYANAIR|EASYJET|AIR FRANCE|TRANSAVIA|VOLOTEA|OUIGO|TRAINLINE|FLIXBUS/],
+  ['Vêtements', /ZARA|\bH M\b|\bHM\b|H&M|KIABI|DECATHLON|UNIQLO|PRIMARK|ZALANDO|SHEIN|JULES|CELIO|BERSHKA|PULL BEAR|MANGO|NIKE|ADIDAS|FOOT LOCKER|COURIR|SPORT 2000|INTERSPORT|GO SPORT|LACOSTE|GALERIES LAFAYETTE|PRINTEMPS/],
   ['Loisirs', /PLANITY|TEMU|ALIEXPRESS|CINEMA|\bUGC\b|PATHE|GAUMONT|MK2|FNAC|CULTURA|DARTY|BOULANGER|AMAZON|AMZN|CDISCOUNT|IKEA|LEROY MERLIN|CASTORAMA|ACTION\b|MUSEE|CONCERT|TICKETMASTER|BILLETTERIE|BOOKING|AIRBNB|HOTEL|SEPHORA|NOCIBE|MARIONNAUD|COIFF|BARBER/],
-  ['Éducation', /TOM ET JOSETTE|TOM JOSETTE|CRECHE|NOUNOU|PAJEMPLOI|ECOLE|UNIVERSITE|UNIV\b|LYCEE|COLLEGE|UDEMY|COURSERA|OPENCLASSROOMS|LIBRAIRIE|CANTINE|CRECHE|FORMATION/],
+  ['Eda', /\bEDA\b|VINTED|TOM ET JOSETTE|TOM JOSETTE|CRECHE|NOUNOU|PAJEMPLOI|ASSISTANTE MAT|\bCAF\b/],
+  ['Éducation', /ECOLE|UNIVERSITE|UNIV\b|LYCEE|COLLEGE|UDEMY|COURSERA|OPENCLASSROOMS|LIBRAIRIE|CANTINE|CRECHE|FORMATION/],
 ];
+// rentrées d'argent déduites d'une catégorie de dépenses plutôt que comptées comme revenu
+const REFUND_RE = /\bCAF\b/;
+const isRefund = label => REFUND_RE.test(' '+stripAcc(label).toUpperCase().replace(/[^A-Z0-9 ]+/g,' ')+' ');
 function guessCat(label, key){
   if(key && S.catRules[key]) return S.catRules[key];
   const t = ' '+stripAcc(label).toUpperCase().replace(/[^A-Z0-9&. ]+/g,' ')+' ';
@@ -821,6 +828,7 @@ async function importFiles(files){
     fresh.forEach(t=>{
       const key = txKey(t.label);
       if(t.amount<0) S.expenses.push({id:uid(), date:t.date, amount:-t.amount, category:guessCat(t.label,key), note:prettyKey(key)||t.label||'Opération', label:t.label, key, h:t.h, src:'import'});
+      else if(isRefund(t.label)) S.expenses.push({id:uid(), date:t.date, amount:-t.amount, category:guessCat(t.label,key), note:prettyKey(key)||t.label, label:t.label, key, h:t.h, src:'import', refund:true});
       else S.credits.push({id:uid(), date:t.date, amount:t.amount, label:t.label, key, h:t.h});
     });
     autoLink();
@@ -918,8 +926,8 @@ function pickFiles(){
 }
 
 /* ================== GRAPHIQUE DE FLUX ================== */
-const GROUPS = [['Épargne','var(--c7)'],['Logement','var(--c2)'],['Échéances','var(--c4)'],['Vie quotidienne','var(--c1)'],['Abonnements','var(--c3)'],['Non dépensé','var(--c8)']];
-const catGroup = c => ({Loyer:'Logement',Factures:'Logement',Abonnements:'Abonnements','Épargne':'Épargne'})[c] || 'Vie quotidienne';
+const GROUPS = [['Épargne','var(--c7)'],['Logement','var(--c2)'],['Voiture','var(--c5)'],['Assurances','var(--c6)'],['Échéances','var(--c4)'],['Vie quotidienne','var(--c1)'],['Abonnements','var(--c3)'],['Non dépensé','var(--c8)']];
+const catGroup = c => ({Loyer:'Logement',Factures:'Logement',Abonnements:'Abonnements','Épargne':'Épargne',Voiture:'Voiture',Assurances:'Assurances'})[c] || 'Vie quotidienne';
 let flowMode = null;
 function avgMonths(){
   const cur=thisYM(), has = m => S.expenses.some(e=>e.date.slice(0,7)===m) || S.credits.some(c=>c.date.slice(0,7)===m);
@@ -929,14 +937,14 @@ function avgMonths(){
 const creditsIn = m => S.credits.filter(c=>c.date.slice(0,7)===m).reduce((s,c)=>s+ +c.amount,0);
 function flowData(months){
   const L={}; let inc=0;
-  const add=(g,name,v)=>{ if(!(v>0)) return; const k=g+'|'+name; (L[k]=L[k]||{g,name,value:0}).value+=v; };
+  const add=(g,name,v)=>{ if(!v) return; const k=g+'|'+name; (L[k]=L[k]||{g,name,value:0}).value+=v; };
   months.forEach(m=>{
     inc += incomeFor(m) || creditsIn(m);
     monthObligations(m).forEach(o=>add(o.kind==='inst'?'Échéances':catGroup(o.ref.category), o.name, o.amount));
     varExp(m).forEach(e=>add(catGroup(e.category), e.category, +e.amount));
   });
   const n=months.length; Object.values(L).forEach(l=>l.value/=n);
-  return {inc:inc/n, leaves:Object.values(L)};
+  return {inc:inc/n, leaves:Object.values(L).filter(l=>l.value>0.005)};
 }
 function sankeySVG(fd){
   const W=360, gO=GROUPS.map(g=>g[0]);
@@ -991,6 +999,14 @@ function flowCard(){
     ${sankeySVG(fd)}</div>`;
 }
 
+if((S.catVer||0)<4){
+  const ren = c => c==='Crèche' ? 'Eda' : c;
+  S.expenses.forEach(e=>e.category=ren(e.category)); S.recurring.forEach(r=>r.category=ren(r.category)); Object.keys(S.catRules).forEach(k=>S.catRules[k]=ren(S.catRules[k]));
+  S.credits = S.credits.filter(c=>{ if(isRefund(c.label||'')){ S.expenses.push({id:uid(), date:c.date, amount:-c.amount, category:guessCat(c.label,c.key), note:prettyKey(c.key)||c.label, label:c.label, key:c.key, h:c.h, src:'import', refund:true}); return false; } return true; });
+  S.expenses.forEach(e=>{ if(e.src==='import' && !(e.key && S.catRules[e.key])) e.category = guessCat(e.label||e.note, e.key); });
+  S.recurring.forEach(r=>{ if(r.match && !S.catRules[r.match]){ const c=guessCat(r.name+' '+r.match, r.match); if(c!=='Autre') r.category=c; } });
+  S.catVer=4; try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){}
+}
 /* ================== FAB ================== */
 $('#fab').onclick=()=>{
   if(tab==='todo') todoForm();
