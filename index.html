@@ -86,7 +86,7 @@ input::-webkit-date-and-time-value{text-align:left}
 .pie-legend .li.on{background:var(--pri2)}
 .pie-legend .sw{width:10px;height:10px;border-radius:3px;flex:none}
 .pie-legend .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pie-legend .pc{color:var(--mute);font-variant-numeric:tabular-nums;width:36px;text-align:right}
+.pie-legend .pc{color:var(--mute);font-variant-numeric:tabular-nums;width:44px;text-align:right}
 .pie-legend .am{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 @media (max-width:560px){.pie-wrap{flex-direction:column;align-items:stretch;gap:8px}.pie-wrap svg{align-self:center;width:170px;height:170px}}
 .segbar{display:flex;gap:2px;height:8px;border-radius:99px;overflow:hidden;margin-top:6px;background:var(--line)}
@@ -115,14 +115,14 @@ td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 /* ================== Veri ================== */
 const KEY = 'cuzdan.v1';
 const DEF = {
-  todos: [], expenses: [], installments: [], recurring: [],
+  todos: [], expenses: [], installments: [], recurring: [], credits: [], catRules: {},
   settings: { income: 0 }
 };
 let S;
 try { S = Object.assign(structuredClone(DEF), JSON.parse(localStorage.getItem(KEY) || '{}')); }
 catch (e) { S = structuredClone(DEF); }
 S.settings = Object.assign({}, DEF.settings, S.settings);
-S.incomeHist = S.incomeHist || {};
+S.incomeHist = S.incomeHist || {}; S.credits = S.credits || []; S.catRules = S.catRules || {};
 function migrate(){
   const cur = ym(new Date());
   S.recurring.forEach(r=>{ if(!r.start){ const p=(r.paid||[]).slice().sort(); r.start = p[0] && p[0]<cur ? p[0] : cur; } r.paidAmt = r.paidAmt||{}; });
@@ -195,7 +195,7 @@ function browserReminderTick(){
 const fmtDT = d => d.toLocaleString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
 
-const CATS = ['Courses','Restaurants','Transport','Factures','Loyer','Santé','Vêtements','Loisirs','Éducation','Autre'];
+const CATS = ['Courses','Restaurants','Transport','Factures','Loyer','Abonnements','Santé','Vêtements','Loisirs','Éducation','Épargne','Autre'];
 const tl = n => (isFinite(n)?n:0).toLocaleString('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:0});
 const tl2 = n => (isFinite(n)?n:0).toLocaleString('fr-FR',{style:'currency',currency:'EUR',maximumFractionDigits:2});
 const num = (n,d=2) => (isFinite(n)?n:0).toLocaleString('fr-FR',{maximumFractionDigits:d});
@@ -231,7 +231,8 @@ function monthObligations(ymStr){
     items.push({kind:'rec', ref:r, name:r.name, amount: paid && r.paidAmt && r.paidAmt[ymStr]!=null ? +r.paidAmt[ymStr] : +r.amount, day:r.day, sub:r.category||'Paiement régulier', paid}); });
   return items.sort((a,b)=>a.day-b.day);
 }
-function monthSpent(ymStr){ return S.expenses.filter(e=>e.date.slice(0,7)===ymStr).reduce((s,e)=>s+ +e.amount,0); }
+const varExp = ymStr => S.expenses.filter(e=>e.date.slice(0,7)===ymStr && !e.recId);
+function monthSpent(ymStr){ return varExp(ymStr).reduce((s,e)=>s+ +e.amount,0); }
 function avgVariable(){
   // son 3 ayın değişken harcama ortalaması (veri olan aylar)
   const cur = thisYM(); const vals=[];
@@ -296,7 +297,7 @@ function vOzet(){
   // gecikmiş
   const overdue = obl.filter(o=>!o.paid && dueDate(m,o.day)<now);
   // kategori dağılımı
-  const byCat = {}; S.expenses.filter(e=>e.date.slice(0,7)===m).forEach(e=>byCat[e.category]=(byCat[e.category]||0)+ +e.amount);
+  const byCat = {}; varExp(m).forEach(e=>byCat[e.category]=(byCat[e.category]||0)+ +e.amount);
   const cats = Object.entries(byCat).sort((a,b)=>b[1]-a[1]); const maxC = cats[0]?.[1]||1;
 
   $('#view').innerHTML = `
@@ -402,16 +403,18 @@ function todoForm(t){
 let expMonth = thisYM();
 function vHarcama(){
   const list = S.expenses.filter(e=>e.date.slice(0,7)===expMonth).sort((a,b)=>b.date.localeCompare(a.date));
-  const total = list.reduce((s,e)=>s+ +e.amount,0);
+  const total = list.filter(e=>!e.recId).reduce((s,e)=>s+ +e.amount,0);
   const groups = {}; list.forEach(e=>(groups[e.date]=groups[e.date]||[]).push(e));
   $('#view').innerHTML = `
     <div class="card" style="display:flex;align-items:center;justify-content:space-between">
       <button class="icon" id="pm">‹</button>
       <div style="text-align:center"><div style="font-weight:600">${monthName(expMonth)}</div><div class="amt" style="font-size:20px">${tl2(total)}</div></div>
       <button class="icon" id="nm">›</button></div>
-    ${list.length? Object.entries(groups).map(([d,arr])=>`<div class="card"><h2><span>${new Date(d+'T00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</span><span class="amt">${tl2(arr.reduce((s,e)=>s+ +e.amount,0))}</span></h2>
-      ${arr.map(e=>`<div class="row"><div class="grow" data-edit-exp="${e.id}"><div class="t">${esc(e.note||e.category)}</div><div class="s">${esc(e.category)}</div></div><div class="amt">${tl2(+e.amount)}</div><button class="icon" data-del-exp="${e.id}">🗑</button></div>`).join('')}</div>`).join('')
+    <button class="btn ghost" id="impBtn" style="width:100%">📥 Importer des relevés bancaires (CSV)</button>
+    ${list.length? Object.entries(groups).map(([d,arr])=>`<div class="card"><h2><span>${new Date(d+'T00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</span><span class="amt">${tl2(arr.filter(e=>!e.recId).reduce((s,e)=>s+ +e.amount,0))}</span></h2>
+      ${arr.map(e=>`<div class="row"><div class="grow" data-edit-exp="${e.id}"><div class="t">${esc(e.note||e.category)}</div><div class="s">${e.recId?'🔁 Paiement régulier · ':''}${esc(e.category)}</div></div><div class="amt" style="${e.recId?'color:var(--mute)':''}">${tl2(+e.amount)}</div><button class="icon" data-del-exp="${e.id}">🗑</button></div>`).join('')}</div>`).join('')
     : '<div class="card"><div class="empty">Aucune dépense ce mois-ci. Ajoute-en avec +.</div></div>'}`;
+  $('#impBtn').onclick=pickFiles;
   $('#pm').onclick=()=>{ expMonth=addMonths(expMonth,-1); render(); };
   $('#nm').onclick=()=>{ expMonth=addMonths(expMonth,1); render(); };
   $('#view').querySelectorAll('[data-del-exp]').forEach(b=>b.onclick=()=>confirmSheet('Supprimer cette dépense ?',()=>S.expenses=S.expenses.filter(x=>x.id!==b.dataset.delExp)));
@@ -425,7 +428,9 @@ function expForm(e){
     <div><label>Catégorie</label><select name="category">${CATS.map(c=>`<option ${e.category===c?'selected':''}>${c}</option>`).join('')}</select></div></div>
     <label>Description</label><input name="note" value="${esc(e.note||'')}" placeholder="Ex. Courses de la semaine">
     <div class="actions"><button type="button" class="btn ghost" data-close>Annuler</button><button class="btn">Enregistrer</button></div></form>`,
-  d=>{ d.amount=+d.amount; if(e.id) Object.assign(e,d); else S.expenses.push({id:uid(),...d}); expMonth=d.date.slice(0,7); });
+  d=>{ d.amount=+d.amount; const old=e.category;
+    if(e.id) Object.assign(e,d); else S.expenses.push({id:uid(),...d}); expMonth=d.date.slice(0,7);
+    if(e.id && e.key && old!==d.category){ S.catRules[e.key]=d.category; let n=0; S.expenses.forEach(x=>{ if(x!==e && x.key===e.key && x.category!==d.category){ x.category=d.category; n++; } }); if(n) setTimeout(()=>toast('Catégorie appliquée aussi à '+n+' opération'+(n>1?'s':'')+' semblable'+(n>1?'s':'')),50); } });
 }
 
 /* ================== ÖDEMELER (taksit + düzenli) ================== */
@@ -450,12 +455,14 @@ function vOdeme(){
   } else {
     const total = liveRecurring().reduce((s,r)=>s+ +r.amount,0);
     body = `<div class="stat"><div class="l">Paiements réguliers mensuels</div><div class="v">${tl(total)}</div></div>
+    ${S.expenses.some(e=>e.src==='import')?'<button class="btn ghost" id="detBtn" style="width:100%;margin-top:10px">🔍 Détecter dans les relevés importés</button>':''}
     <div class="card">${liveRecurring().length? liveRecurring().sort((a,b)=>a.day-b.day).map(r=>{ const p=(r.paid||[]).includes(m);
       return `<div class="row"><button class="chk ${p?'on':''}" data-pay="rec:${r.id}:${m}">${p?'✓':''}</button>
       <div class="grow" data-edit-rec="${r.id}"><div class="t">${esc(r.name)}</div><div class="s">Le ${r.day} du mois · ${esc(r.category)}</div></div><div class="amt">${tl(+r.amount)}</div><button class="icon" data-del-rec="${r.id}">🗑</button></div>`;}).join('') : '<div class="empty">Ajoute avec + les paiements qui reviennent chaque mois : loyer, factures, abonnements…</div>'}</div>`;
   }
   $('#view').innerHTML = `<div class="seg"><button data-s="taksit" class="${sub.odeme==='taksit'?'on':''}">Échelonnés</button><button data-s="duzenli" class="${sub.odeme==='duzenli'?'on':''}">Paiements réguliers</button></div>${body}`;
   $('#view').querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{ sub.odeme=b.dataset.s; render(); });
+  const det=$('#detBtn'); if(det) det.onclick=()=>openDetect(false);
   $('#view').querySelectorAll('[data-del-inst]').forEach(b=>b.onclick=()=>confirmSheet('Supprimer ce paiement échelonné ?',()=>S.installments=S.installments.filter(x=>x.id!==b.dataset.delInst)));
   $('#view').querySelectorAll('[data-del-rec]').forEach(b=>b.onclick=()=>confirmSheet('Supprimer ce paiement régulier ? (Il reste dans les rapports des mois passés)',()=>deleteRec(b.dataset.delRec)));
   $('#view').querySelectorAll('[data-edit-inst]').forEach(b=>b.onclick=()=>instForm(S.installments.find(x=>x.id===b.dataset.editInst)));
@@ -484,8 +491,9 @@ function instForm(it){
 function deleteRec(id){
   const r=S.recurring.find(x=>x.id===id); if(!r) return; const m=thisYM();
   const end = (r.paid||[]).includes(m) ? m : addMonths(m,-1);
-  if(!r.start || r.start>end) S.recurring=S.recurring.filter(x=>x.id!==id);
-  else { r.end=end; r.deleted=true; }
+  if(!r.start || r.start>end){ S.recurring=S.recurring.filter(x=>x.id!==id); S.expenses.forEach(e=>{ if(e.recId===id) delete e.recId; }); }
+  else { r.end=end; r.deleted=true; S.expenses.forEach(e=>{ if(e.recId===id && e.date.slice(0,7)>end) delete e.recId; }); }
+  if(r.match) S.catRules['__ignore_'+r.match]=1;
 }
 function recForm(r){
   r = r||{day:1, category:'Factures'};
@@ -507,7 +515,7 @@ const OTHER = 'var(--c8)';
 function monthReport(m){
   const obl = monthObligations(m);
   const inst = obl.filter(o=>o.kind==='inst'), rec = obl.filter(o=>o.kind==='rec');
-  const exps = S.expenses.filter(e=>e.date.slice(0,7)===m);
+  const exps = varExp(m);
   const byCat = {}; exps.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+ +e.amount);
   const spent = exps.reduce((s,e)=>s+ +e.amount,0);
   const instT = inst.reduce((s,o)=>s+o.amount,0), recT = rec.reduce((s,o)=>s+o.amount,0);
@@ -549,7 +557,7 @@ function pieChart(id, title, slices){
   slices.forEach((s,i)=>{
     const frac=s.value/total; const a1=a+frac*2*Math.PI;
     const dim = act!=null && act!==i ? ' opacity=".3"' : '';
-    const label = `${esc(s.name)}: ${tl(s.value)} (%${num(frac*100,0)})`;
+    const label = `${esc(s.name)}: ${tl(s.value)} (${num(frac*100,0)} %)`;
     if(frac>=0.9999) paths += `<path d="${arcPath(cx,cy,r0,r1,0,Math.PI*1.9999)}" fill="${s.color}" data-pie="${id}:${i}"${dim}><title>${label}</title></path>`;
     else paths += `<path d="${arcPath(cx,cy,r0,r1,a,a1)}" fill="${s.color}" stroke="var(--card)" stroke-width="2" stroke-linejoin="round" data-pie="${id}:${i}"${dim}><title>${label}</title></path>`;
     a=a1;
@@ -560,7 +568,7 @@ function pieChart(id, title, slices){
     : `<text x="75" y="70" text-anchor="middle" font-size="11" fill="var(--mute)">Total</text><text x="75" y="88" text-anchor="middle" font-size="14" font-weight="700" fill="var(--ink)">${tl(total)}</text>`;
   return `<div class="card"><h2>${title}</h2><div class="pie-wrap">
     <svg viewBox="0 0 150 150" role="img" aria-label="${esc(title)}">${paths}${center}</svg>
-    <div class="pie-legend">${slices.map((s,i)=>`<div class="li ${act===i?'on':''}" data-pie="${id}:${i}"><span class="sw" style="background:${s.color}"></span><span class="nm">${esc(s.name)}</span><span class="pc">%${num(s.value/total*100,0)}</span><span class="am">${tl(s.value)}</span></div>`).join('')}</div>
+    <div class="pie-legend">${slices.map((s,i)=>`<div class="li ${act===i?'on':''}" data-pie="${id}:${i}"><span class="sw" style="background:${s.color}"></span><span class="nm">${esc(s.name)}</span><span class="pc">${num(s.value/total*100,0)} %</span><span class="am">${tl(s.value)}</span></div>`).join('')}</div>
   </div></div>`;
 }
 function vRapor(){
@@ -580,6 +588,7 @@ function vRapor(){
       <button class="icon" id="rpm" aria-label="Mois précédent">‹</button>
       <div style="text-align:center"><div style="font-weight:600">${monthName(repMonth)}</div><div class="note">${repMonth===thisYM()?'Ce mois-ci':'Mois passé'}</div></div>
       <button class="icon" id="rnm" aria-label="Mois suivant" ${repMonth>=thisYM()?'disabled style="opacity:.3"':''}>›</button></div>
+    ${flowCard()}
     <div class="grid2">
       <div class="stat" id="incStat" style="cursor:pointer"><div class="l">Revenu ✎</div><div class="v">${R0.inc?tl(R0.inc):'<span class="note">Non saisi</span>'}</div></div>
       <div class="stat"><div class="l">Reste</div><div class="v ${left<0?'neg':'pos'}">${R0.inc?tl(left):'–'}</div></div>
@@ -606,6 +615,7 @@ function vRapor(){
     <p class="note">Ce montant s'applique à partir de ce mois-ci, jusqu'au prochain changement de revenu.</p>
     <div class="actions"><button type="button" class="btn ghost" data-close>Annuler</button><button class="btn">Enregistrer</button></div></form>`,
     d=>{ S.incomeHist[repMonth]=+d.inc||0; if(repMonth===thisYM()) S.settings.income=+d.inc||0; });
+  $('#view').querySelectorAll('#flowSeg button').forEach(b=>b.onclick=()=>{ flowMode=b.dataset.f; const y=window.scrollY; render(); window.scrollTo(0,y); });
   $('#rpm').onclick=()=>{ repMonth=addMonths(repMonth,-1); for(const k in repActive) delete repActive[k]; render(); };
   $('#rnm').onclick=()=>{ if(repMonth<thisYM()){ repMonth=addMonths(repMonth,1); for(const k in repActive) delete repActive[k]; render(); } };
   $('#view').querySelectorAll('[data-pie]').forEach(el=>el.onclick=()=>{ const [id,i]=el.dataset.pie.split(':'); repActive[id] = repActive[id]===+i ? null : +i; const y=window.scrollY; render(); window.scrollTo(0,y); });
@@ -622,12 +632,347 @@ $('#btnSettings').onclick=()=>{
     <h3 style="margin-top:24px">Sauvegarde</h3>
     <p class="note">Les données restent uniquement sur ce téléphone. Fais une sauvegarde avant de supprimer l'application ou de changer de téléphone.</p>
     <div class="actions"><button type="button" class="btn ghost" id="exp">Télécharger la sauvegarde</button><button type="button" class="btn ghost" id="cpy">Copier</button></div>
+    <h3 style="margin-top:24px">Relevés bancaires</h3>
+    <p class="note">Importe les opérations exportées depuis ta banque (CSV, OFX ou QIF). Les doublons sont ignorés.</p>
+    <button type="button" class="btn ghost" id="impSet" style="width:100%">📥 Importer des relevés</button>
     <label>Restaurer une sauvegarde (.json)</label><input type="file" id="imp" accept="application/json,.json">
   </form>`, d=>{ st.income=+d.income||0; S.incomeHist[thisYM()]=st.income; });
   $('#exp').onclick=()=>{ if(window.Android&&Android.shareBackup){ Android.shareBackup(JSON.stringify(S,null,1)); return; } const b=new Blob([JSON.stringify(S,null,1)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='mon-budget-sauvegarde-'+new Date().toISOString().slice(0,10)+'.json'; a.click(); };
+  $('#impSet').onclick=()=>{ closeSheet(); pickFiles(); };
   $('#cpy').onclick=async()=>{ try{ await navigator.clipboard.writeText(JSON.stringify(S)); toast('Sauvegarde copiée dans le presse-papiers'); }catch(e){ toast('Copie impossible'); } };
-  $('#imp').onchange=async e=>{ const f=e.target.files[0]; if(!f) return; try{ const j=JSON.parse(await f.text()); if(!j.settings) throw 0; S=Object.assign(structuredClone(DEF),j); save(); closeSheet(); render(); toast('Sauvegarde restaurée'); }catch(_){ toast('Fichier de sauvegarde invalide'); } };
+  $('#imp').onchange=async e=>{ const f=e.target.files[0]; if(!f) return; try{ const j=JSON.parse(await f.text()); if(!j.settings) throw 0; S=Object.assign(structuredClone(DEF),j); S.incomeHist=S.incomeHist||{}; save(); closeSheet(); render(); toast('Sauvegarde restaurée'); }catch(_){ toast('Fichier de sauvegarde invalide'); } };
 };
+
+/* ================== IMPORT DE RELEVÉS ================== */
+const STOP = new Set(['CB','CARTE','PRLV','PRELEVEMENT','PRELEV','SEPA','VIR','VIREMENT','VIRT','INST','INSTANTANE','RECU','EMIS','PAIEMENT','PAIE','ACHAT','FACTURE','FACT','DU','LE','LA','LES','DE','DES','ET','AU','MOTIF','REF','REFERENCE','ECH','MDT','ID','NUM','NO','PAR','POUR','EUR','EURO','EUROS','RETRAIT','DAB','OPERATION','OP','FRAIS','CARD','PAYMENT','TO','FROM','SAS','SARL','SA','FR','WWW','COM','HTTPS','HTTP','PAYPAL','EUROPE','SCA','TRANSFER','PERMANENT','VERS','INSTANT','IMMEDIAT','PRELEVT','SEPA','DATE','CPTE','COMPTE']);
+const stripAcc = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'');
+function txKey(label){
+  const w = stripAcc(label).toUpperCase().replace(/[^A-Z ]+/g,' ').split(/\s+/).filter(x=>x.length>1 && !STOP.has(x));
+  return w.slice(0,3).join(' ');
+}
+const prettyKey = k => k ? k.toLowerCase().replace(/\b[a-z]/g,c=>c.toUpperCase()) : '';
+const CAT_RULES = [
+  ['Épargne', /LIVRET|EPARGNE|\bPEA\b|ASSURANCE VIE|ASS VIE|BOURSE|TRADE REPUBLIC|BOURSORAMA PLACEMENT|LINXEA|YOMONI|NALO|COINBASE|BINANCE|CRYPTO|FINARY/],
+  ['Loyer', /LOYER|FONCIA|NEXITY|CITYA|ORPI|CENTURY|AGENCE IMMO|SYNDIC|BAILLEUR|CREDIT IMMO|PRET IMMO|ECHEANCE PRET/],
+  ['Abonnements', /NETFLIX|SPOTIFY|DISNEY|CANAL|DEEZER|PRIME VIDEO|AMAZON PRIME|APPLE COM|APPLE\.COM|ITUNES|ICLOUD|GOOGLE|YOUTUBE|PLAYSTATION|XBOX|NINTENDO|STEAM|ADOBE|MICROSOFT|OPENAI|CHATGPT|ANTHROPIC|CLAUDE|DROPBOX|BASIC FIT|FITNESS|NEONESS|ON AIR|KEEP COOL|SALLE DE SPORT|ABONNEMENT|ABO\b|PATREON|TWITCH|DUOLINGO|AUDIBLE|KINDLE|MOLOTOV|PARAMOUNT|CRUNCHYROLL|GITHUB|NOTION|LINKEDIN|TINDER|MEETIC/],
+  ['Factures', /\bEDF\b|ENGIE|TOTALENERGIES|TOTAL ENERGIES|EKWATEUR|OCTOPUS|ORANGE|\bSFR\b|BOUYGUES|\bFREE\b|FREE MOBILE|SOSH|RED BY|\bEAU\b|VEOLIA|SUEZ|SAUR|ASSURANCE|MAIF|MACIF|MAAF|\bAXA\b|MATMUT|ALLIANZ|GROUPAMA|GMF|DIRECT ASSURANCE|LUKO|LEMONADE|IMPOT|DGFIP|TRESOR PUBLIC|TAXE|URSSAF|ELECTRICITE|\bGAZ\b/],
+  ['Santé', /PHARMACIE|PHARMA|DOCTEUR|\bDR\b|MEDECIN|DOCTOLIB|MUTUELLE|CPAM|AMELI|HOPITAL|CLINIQUE|DENTISTE|DENTAIRE|OPTIC|OPTIQUE|KINE|LABORATOIRE|ALAN\b/],
+  ['Courses', /CARREFOUR|LECLERC|AUCHAN|\bLIDL\b|INTERMARCHE|MONOPRIX|FRANPRIX|CASINO|SUPER U|HYPER U|SYSTEME U|\bU EXPRESS|PICARD|\bALDI\b|NETTO|\bG20\b|SPAR|NATURALIA|BIOCOOP|GRAND FRAIS|CORA|MATCH|PROXI|MARKET|SUPERMARCHE|EPICERIE|PRIMEUR|BOUCHERIE|DIA\b/],
+  ['Restaurants', /RESTAU|MCDO|MC DO|MCDONALD|BURGER|\bKFC\b|UBER EATS|UBEREATS|DELIVEROO|JUST EAT|STARBUCKS|BOULANG|PATISSERIE|\bCAFE\b|BRASSERIE|PIZZA|SUSHI|KEBAB|TACOS|O TACOS|BISTRO|\bBAR\b|PAUL\b|COLUMBUS|FIVE GUYS|SUBWAY|DOMINO|PRET A MANGER|BAGEL|CREPERIE/],
+  ['Transport', /SNCF|\bRATP\b|NAVIGO|\bUBER\b|BOLT|HEETCH|\bG7\b|TAXI|TOTAL\b|ESSO|SHELL|\bBP\b|AVIA|STATION|CARBURANT|PEAGE|AUTOROUTE|SANEF|APRR|VINCI|BLABLACAR|PARKING|INDIGO|LIME|DOTT|TIER|VELIB|TCL|TRANSDEV|KEOLIS|RYANAIR|EASYJET|AIR FRANCE|TRANSAVIA|VOLOTEA|OUIGO|TRAINLINE|FLIXBUS/],
+  ['Vêtements', /ZARA|\bH M\b|\bHM\b|H&M|KIABI|DECATHLON|UNIQLO|PRIMARK|VINTED|ZALANDO|SHEIN|JULES|CELIO|BERSHKA|PULL BEAR|MANGO|NIKE|ADIDAS|FOOT LOCKER|COURIR|SPORT 2000|INTERSPORT|GO SPORT|LACOSTE|GALERIES LAFAYETTE|PRINTEMPS/],
+  ['Loisirs', /CINEMA|\bUGC\b|PATHE|GAUMONT|MK2|FNAC|CULTURA|DARTY|BOULANGER|AMAZON|AMZN|CDISCOUNT|IKEA|LEROY MERLIN|CASTORAMA|ACTION\b|MUSEE|CONCERT|TICKETMASTER|BILLETTERIE|BOOKING|AIRBNB|HOTEL|SEPHORA|NOCIBE|MARIONNAUD|COIFF|BARBER/],
+  ['Éducation', /ECOLE|UNIVERSITE|UNIV\b|LYCEE|COLLEGE|UDEMY|COURSERA|OPENCLASSROOMS|LIBRAIRIE|CANTINE|CRECHE|FORMATION/],
+];
+function guessCat(label, key){
+  if(key && S.catRules[key]) return S.catRules[key];
+  const t = ' '+stripAcc(label).toUpperCase().replace(/[^A-Z0-9&. ]+/g,' ')+' ';
+  for(const [c,re] of CAT_RULES) if(re.test(t)) return c;
+  return 'Autre';
+}
+
+/* -- analyse des formats -- */
+function parseAmt(v){
+  if(v==null) return NaN;
+  let s = String(v).replace(/[\s  €$£]|EUR/gi,'').trim();
+  if(!s) return NaN;
+  let neg = false;
+  if(/^\(.*\)$/.test(s)){ neg=true; s=s.slice(1,-1); }
+  if(/-$/.test(s)){ neg=true; s=s.slice(0,-1); }
+  if(/^\+/.test(s)) s=s.slice(1);
+  if(/^-/.test(s)){ neg=!neg; s=s.slice(1); }
+  if(!/^[\d.,']+$/.test(s)) return NaN;
+  s = s.replace(/'/g,'');
+  const lc = s.lastIndexOf(','), ld = s.lastIndexOf('.');
+  if(lc>=0 && ld>=0){ s = lc>ld ? s.replace(/\./g,'').replace(',','.') : s.replace(/,/g,''); }
+  else if(lc>=0){ s = (s.split(',').length>2) ? s.replace(/,/g,'') : s.replace(',','.'); }
+  else if(ld>=0 && s.split('.').length>2) s = s.replace(/\./g,'');
+  const n = parseFloat(s); if(!isFinite(n)) return NaN;
+  return neg ? -n : n;
+}
+function parseDate(v){
+  const s = String(v||'').trim(); let m;
+  const ok = (y,mo,d)=>{ y=+y; mo=+mo; d=+d; if(y<100) y+=2000; if(mo<1||mo>12||d<1||d>31||y<1990||y>2100) return null; return y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0'); };
+  if((m=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/))) return ok(m[1],m[2],m[3]);
+  if((m=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})\b/))) return ok(m[3],m[2],m[1]);
+  if((m=s.match(/^(\d{4})(\d{2})(\d{2})/))) return ok(m[1],m[2],m[3]);
+  return null;
+}
+function csvRows(t, d){
+  const rows=[]; let row=[], f='', q=false;
+  for(let i=0;i<t.length;i++){
+    const c=t[i];
+    if(q){ if(c==='"'){ if(t[i+1]==='"'){ f+='"'; i++; } else q=false; } else f+=c; }
+    else if(c==='"' && f.trim()==='') { q=true; f=''; }
+    else if(c===d){ row.push(f); f=''; }
+    else if(c==='\n' || c==='\r'){ if(c==='\r' && t[i+1]==='\n') i++; row.push(f); rows.push(row); row=[]; f=''; }
+    else f+=c;
+  }
+  if(f!=='' || row.length){ row.push(f); rows.push(row); }
+  return rows.filter(r=>r.some(x=>String(x).trim()!==''));
+}
+const hnorm = s => stripAcc(s).toLowerCase().trim();
+function parseCSV(text){
+  const lines = text.split(/\r?\n/).filter(l=>l.trim()).slice(0,40);
+  const share = ch => lines.filter(l=>l.includes(ch)).length / Math.max(1,lines.length);
+  const d = share(';')>=0.5 ? ';' : share('\t')>=0.5 ? '\t' : ',';
+  const rows = csvRows(text, d);
+  // en-tête
+  let hi=-1, best=0;
+  for(let i=0;i<Math.min(rows.length,40);i++){
+    const h=rows[i].map(hnorm); let sc=0;
+    if(h.some(x=>/date/.test(x))) sc++;
+    if(h.some(x=>/libell|label|description|payee|benefic|detail|memo|intitul|wording|nom\b|motif|tiers/.test(x))) sc++;
+    if(h.some(x=>/montant|amount|debit|credit|somme/.test(x))) sc++;
+    if(sc>best && h.every(x=>!parseDate(x))){ best=sc; hi=i; }
+  }
+  let di=-1, ai=-1, dbi=-1, cri=-1, li=-1, data;
+  const avgLen = (idx, rs) => rs.reduce((s,r)=>s+String(r[idx]||'').trim().length,0)/Math.max(1,rs.length);
+  if(best>=2){
+    const h = rows[hi].map(hnorm); data = rows.slice(hi+1);
+    const dates = h.map((x,i)=>/date/.test(x)?i:-1).filter(i=>i>=0);
+    di = dates.find(i=>/op|start|transac|compta|effet/.test(h[i]) && !/valeur|value/.test(h[i])) ?? dates.find(i=>!/valeur|value/.test(h[i])) ?? dates[0] ?? -1;
+    ai = h.findIndex(x=>/montant|amount|somme/.test(x) && !/solde|balance|frais|fee|devise|currency|foreign|origin|etrang/.test(x));
+    dbi = h.findIndex(x=>/debit/.test(x)); cri = h.findIndex(x=>/credit/.test(x));
+    const lc = h.map((x,i)=>/libell|label|description|payee|benefic|detail|memo|intitul|wording|nom\b|motif|tiers|partenaire|reference/.test(x) && !/date|montant|amount|categor|numero|devise|solde|compte|account/.test(x) ? i : -1).filter(i=>i>=0);
+    li = lc.sort((a,b)=>avgLen(b,data)-avgLen(a,data))[0] ?? -1;
+  }
+  if(di<0 || (ai<0 && dbi<0 && cri<0)){
+    // pas d'en-tête reconnu : on devine les colonnes
+    data = rows.filter(r=>r.length>=3);
+    const n = Math.max(...data.map(r=>r.length));
+    const rate = (i,fn)=>data.filter(r=>fn(r[i])).length/Math.max(1,data.length);
+    let bd=0; for(let i=0;i<n;i++){ const r=rate(i,x=>parseDate(x)); if(r>bd){ bd=r; di=i; } }
+    if(bd<0.5) return [];
+    let ba=0; for(let i=0;i<n;i++){ if(i===di) continue; const r=rate(i,x=>/[,.]\d{2}\s*$/.test(String(x).trim()) && isFinite(parseAmt(x))); const neg=rate(i,x=>parseAmt(x)<0); const sc=r+(neg>0?0.5:0); if(r>=0.5 && sc>ba){ ba=sc; ai=i; } }
+    if(ai<0) return [];
+    let bl=0; for(let i=0;i<n;i++){ if(i===di||i===ai) continue; const L=avgLen(i,data); if(L>bl && rate(i,x=>isFinite(parseAmt(x)))<0.5){ bl=L; li=i; } }
+  }
+  const out=[];
+  data.forEach(r=>{
+    const date = parseDate(r[di]); if(!date) return;
+    let amount;
+    if(ai>=0 && String(r[ai]||'').trim()!=='') amount = parseAmt(r[ai]);
+    else { const db=parseAmt(r[dbi]), cr=parseAmt(r[cri]); amount = (isFinite(cr)?Math.abs(cr):0) - (isFinite(db)?Math.abs(db):0); }
+    if(!isFinite(amount) || !amount) return;
+    const label = String(li>=0 ? r[li] : '').replace(/\s+/g,' ').trim();
+    out.push({date, amount:Math.round(amount*100)/100, label});
+  });
+  return out;
+}
+function parseOFX(text){
+  return text.split(/<STMTTRN>/i).slice(1).map(b=>{
+    const g = t => { const m=b.match(new RegExp('<'+t+'>([^<\\r\\n]*)','i')); return m?m[1].trim():''; };
+    const name=g('NAME'), memo=g('MEMO');
+    return {date:parseDate(g('DTPOSTED')), amount:parseAmt(g('TRNAMT')), label:(name && memo && !memo.includes(name) ? name+' '+memo : name||memo)};
+  }).filter(t=>t.date && isFinite(t.amount) && t.amount);
+}
+function parseQIF(text){
+  return text.split(/^\^\s*$/m).map(b=>{
+    const t={label:''}; b.split(/\r?\n/).forEach(l=>{ const k=l[0], v=l.slice(1).trim();
+      if(k==='D') t.date=parseDate(v.replace("'",'/')); else if(k==='T'||k==='U') t.amount=parseAmt(v); else if(k==='P') t.label=v+(t.label?' '+t.label:''); else if(k==='M') t.label=(t.label?t.label+' ':'')+v; });
+    return t;
+  }).filter(t=>t.date && isFinite(t.amount) && t.amount);
+}
+async function readText(file){
+  const buf = await file.arrayBuffer();
+  try { return new TextDecoder('utf-8',{fatal:true}).decode(buf).replace(/^﻿/,''); }
+  catch(e){ return new TextDecoder('windows-1252').decode(buf); }
+}
+const txHash = t => t.date+'|'+t.amount.toFixed(2);
+
+async function importFiles(files){
+  let all=[], bad=[], perFile=[];
+  for(const f of files){
+    try{
+      const t = await readText(f);
+      const tx = /<STMTTRN>/i.test(t) ? parseOFX(t) : /^!Type:/mi.test(t) ? parseQIF(t) : parseCSV(t);
+      if(tx.length){ all=all.concat(tx); perFile.push(tx); } else bad.push(f.name);
+    }catch(e){ bad.push(f.name); }
+  }
+  if(!all.length){
+    openSheet(`<h3>Format non reconnu</h3><p>Je n'ai trouvé aucune opération dans ${bad.length>1?'ces fichiers':'ce fichier'}.</p>
+      <p class="note">Sur le site ou l'appli de ta banque, cherche « Exporter » / « Télécharger les opérations » et choisis le format <b>CSV</b> (ou Excel/CSV, OFX, QIF). Les relevés PDF ne peuvent pas être lus.</p>
+      <div class="actions"><button class="btn" data-close>OK</button></div>`);
+    return;
+  }
+  // doublons : comparés aux opérations déjà présentes et aux fichiers précédents du même import
+  const known = {}; [...S.expenses, ...S.credits].forEach(x=>{ if(x.h) known[x.h]=(known[x.h]||0)+1; });
+  const fresh=[]; let dup=0;
+  perFile.forEach(tx=>{
+    const avail = {...known}, cnt = {};
+    tx.forEach(t=>{ const h=txHash(t); if(avail[h]>0){ avail[h]--; dup++; } else { fresh.push({...t,h}); cnt[h]=(cnt[h]||0)+1; } });
+    Object.entries(cnt).forEach(([h,c])=>known[h]=(known[h]||0)+c);
+  });
+  const deb=fresh.filter(t=>t.amount<0), cre=fresh.filter(t=>t.amount>0);
+  const ds=fresh.map(t=>t.date).sort();
+  openSheet(`<form><h3>Importer les relevés</h3>
+    ${fresh.length?`<table>
+      <tr><td>Période</td><td>${ds.length?fmtDate(new Date(ds[0]+'T00:00'))+' → '+new Date(ds[ds.length-1]+'T00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):''}</td></tr>
+      <tr><td>Dépenses</td><td>${deb.length} · ${tl(deb.reduce((s,t)=>s-t.amount,0))}</td></tr>
+      <tr><td>Rentrées d'argent</td><td>${cre.length} · ${tl(cre.reduce((s,t)=>s+t.amount,0))}</td></tr>
+      ${dup?`<tr><td>Déjà importées (ignorées)</td><td>${dup}</td></tr>`:''}
+    </table>
+    <p class="note">Les dépenses sont classées automatiquement par catégorie. Tu pourras corriger une catégorie : la correction s'appliquera aussi aux opérations semblables.</p>`
+    :`<p>Toutes ces opérations (${dup}) sont déjà dans l'application.</p>`}
+    ${bad.length?`<p class="note">Fichier(s) non reconnu(s) : ${esc(bad.join(', '))}</p>`:''}
+    <div class="actions"><button type="button" class="btn ghost" data-close>Annuler</button>${fresh.length?'<button class="btn">Importer</button>':''}</div></form>`,
+  ()=>{
+    fresh.forEach(t=>{
+      const key = txKey(t.label);
+      if(t.amount<0) S.expenses.push({id:uid(), date:t.date, amount:-t.amount, category:guessCat(t.label,key), note:prettyKey(key)||t.label||'Opération', label:t.label, key, h:t.h, src:'import'});
+      else S.credits.push({id:uid(), date:t.date, amount:t.amount, label:t.label, key, h:t.h});
+    });
+    autoLink();
+    if(ds.length) expMonth = ds[ds.length-1].slice(0,7);
+    toast(fresh.length+' opérations importées');
+    setTimeout(()=>openDetect(true), 300);
+  });
+}
+
+/* -- détection des paiements réguliers -- */
+const median = a => { const s=[...a].sort((x,y)=>x-y), n=s.length; return n? (n%2? s[(n-1)/2] : (s[n/2-1]+s[n/2])/2) : 0; };
+function importedMonths(){ return [...new Set([...S.expenses.filter(e=>e.src==='import'), ...S.credits].map(x=>x.date.slice(0,7)))].sort(); }
+function recurringGroups(list, minAmt){
+  const nM = importedMonths().length, minM = nM>=4 ? 3 : 2;
+  const g={}; list.forEach(x=>{ if(x.key) (g[x.key]=g[x.key]||[]).push(x); });
+  const out=[];
+  Object.entries(g).forEach(([key,arr])=>{
+    const months=[...new Set(arr.map(x=>x.date.slice(0,7)))].sort();
+    if(months.length<minM || arr.length>months.length*1.5) return;
+    const am=arr.map(x=>+x.amount), med=median(am);
+    if(med<(minAmt||1)) return;
+    if(am.filter(a=>Math.abs(a-med)<=Math.max(2,med*0.25)).length < arr.length*0.75) return;
+    const recent=[...arr].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3).map(x=>+x.amount);
+    const cats={}; arr.forEach(x=>cats[x.category]=(cats[x.category]||0)+1);
+    out.push({key, name:prettyKey(key), amount:Math.round(median(recent)*100)/100, day:Math.round(median(arr.map(x=>+x.date.slice(8,10)))), months, category:Object.entries(cats).sort((a,b)=>b[1]-a[1])[0]?.[0]||'Autre', n:arr.length});
+  });
+  return out.sort((a,b)=>b.amount-a.amount);
+}
+function detectRecurring(){
+  const known = new Set(S.recurring.map(r=>r.match).filter(Boolean));
+  return recurringGroups(S.expenses.filter(e=>e.src==='import' && !e.recId), 1).filter(c=>!known.has(c.key) && !S.catRules['__ignore_'+c.key]);
+}
+function detectIncome(){ return recurringGroups(S.credits, 300)[0] || null; }
+function autoLink(){
+  S.recurring.forEach(r=>{
+    if(!r.match) return;
+    const byM={};
+    S.expenses.forEach(e=>{ if(e.key===r.match && (!e.recId || e.recId===r.id)){ e.recId=r.id; const m=e.date.slice(0,7); byM[m]=(byM[m]||0)+ +e.amount; } });
+    r.paid=r.paid||[]; r.paidAmt=r.paidAmt||{};
+    Object.entries(byM).forEach(([m,v])=>{ if(!r.paid.includes(m)) r.paid.push(m); r.paidAmt[m]=Math.round(v*100)/100; if(!r.start||m<r.start) r.start=m; });
+  });
+}
+function openDetect(afterImport){
+  const cands = detectRecurring();
+  const inc = (!S.settings.income || afterImport) ? detectIncome() : null;
+  if(!cands.length && !inc){ if(!afterImport) toast('Aucune nouvelle dépense régulière détectée'); return; }
+  openSheet(`<form><h3>🔍 Dépenses régulières détectées</h3>
+    <p class="note">Ces opérations reviennent chaque mois avec un montant proche. Coche celles à suivre dans <b>Paiements → Paiements réguliers</b> : elles seront marquées payées pour les mois passés et ne seront plus comptées en double dans les dépenses.</p>
+    ${inc?`<div class="card" style="margin:10px 0"><label style="display:flex;gap:10px;align-items:center;color:var(--ink);font-size:14px;margin:0"><input type="checkbox" name="inc" ${S.settings.income?'':'checked'} style="width:22px;height:22px;flex:none">
+      <span><b>Revenu mensuel : ${tl(inc.amount)}</b><br><span class="note">${esc(inc.name)} · ${inc.months.length} mois${S.settings.income?' · actuellement '+tl(S.settings.income):''}</span></span></label></div>`:''}
+    ${cands.map((c,i)=>`<div class="row" style="flex-wrap:wrap;gap:8px">
+      <input type="checkbox" name="c${i}" checked style="width:22px;height:22px;flex:none">
+      <div class="grow"><input name="n${i}" value="${esc(c.name)}" style="padding:6px 8px">
+        <div class="s" style="margin-top:4px">le ${c.day} du mois · ${c.months.length} mois · <select name="k${i}" style="width:auto;display:inline-block;padding:2px 6px;font-size:16px">${CATS.map(x=>`<option ${x===c.category?'selected':''}>${x}</option>`).join('')}</select></div></div>
+      <div class="amt">${tl2(c.amount)}</div></div>`).join('')}
+    <div class="actions"><button type="button" class="btn ghost" data-close>Plus tard</button><button class="btn">Ajouter</button></div></form>`,
+  d=>{
+    let n=0;
+    cands.forEach((c,i)=>{ if(!d['c'+i]) return; n++;
+      const cat=d['k'+i]||c.category;
+      S.recurring.push({id:uid(), name:(d['n'+i]||c.name).trim()||c.name, amount:c.amount, day:Math.min(31,Math.max(1,c.day||1)), category:cat, match:c.key, paid:[], paidAmt:{}, start:c.months[0]});
+      if(cat!==c.category){ S.catRules[c.key]=cat; S.expenses.forEach(e=>{ if(e.key===c.key) e.category=cat; }); }
+    });
+    autoLink();
+    if(inc && d.inc){
+      const first=inc.months[0];
+      Object.keys(S.incomeHist).forEach(k=>{ if(k>first && k<=thisYM()) delete S.incomeHist[k]; });
+      S.incomeHist[first]=inc.amount; S.settings.income=inc.amount;
+    }
+    if(n) { sub.odeme='duzenli'; toast(n+' paiement'+(n>1?'s':'')+' régulier'+(n>1?'s':'')+' ajouté'+(n>1?'s':'')); }
+  });
+}
+function pickFiles(){
+  const i=document.createElement('input'); i.type='file'; i.multiple=true; i.accept='.csv,.txt,.ofx,.qif,.tsv,text/csv,text/plain';
+  i.style.display='none'; document.body.appendChild(i);
+  i.onchange=()=>{ const f=[...i.files]; i.remove(); if(f.length) importFiles(f); };
+  i.click();
+}
+
+/* ================== GRAPHIQUE DE FLUX ================== */
+const GROUPS = [['Épargne','var(--c7)'],['Logement','var(--c2)'],['Échéances','var(--c4)'],['Vie quotidienne','var(--c1)'],['Abonnements','var(--c3)'],['Non dépensé','var(--c8)']];
+const catGroup = c => ({Loyer:'Logement',Factures:'Logement',Abonnements:'Abonnements','Épargne':'Épargne'})[c] || 'Vie quotidienne';
+let flowMode = null;
+function avgMonths(){
+  const cur=thisYM(), has = m => S.expenses.some(e=>e.date.slice(0,7)===m) || S.credits.some(c=>c.date.slice(0,7)===m);
+  const ms=[]; for(let k=1;k<=6;k++){ const m=addMonths(cur,-k); if(has(m)) ms.push(m); }
+  return ms.length? ms.reverse() : [cur];
+}
+const creditsIn = m => S.credits.filter(c=>c.date.slice(0,7)===m).reduce((s,c)=>s+ +c.amount,0);
+function flowData(months){
+  const L={}; let inc=0;
+  const add=(g,name,v)=>{ if(!(v>0)) return; const k=g+'|'+name; (L[k]=L[k]||{g,name,value:0}).value+=v; };
+  months.forEach(m=>{
+    inc += incomeFor(m) || creditsIn(m);
+    monthObligations(m).forEach(o=>add(o.kind==='inst'?'Échéances':catGroup(o.ref.category), o.name, o.amount));
+    varExp(m).forEach(e=>add(catGroup(e.category), e.category, +e.amount));
+  });
+  const n=months.length; Object.values(L).forEach(l=>l.value/=n);
+  return {inc:inc/n, leaves:Object.values(L)};
+}
+function sankeySVG(fd){
+  const W=360, gO=GROUPS.map(g=>g[0]);
+  let leaves = fd.leaves.slice().sort((a,b)=>(gO.indexOf(a.g)-gO.indexOf(b.g)) || b.value-a.value);
+  if(leaves.length>30){ const out=[]; gO.forEach(g=>{ const ls=leaves.filter(l=>l.g===g); if(ls.length<=8) out.push(...ls); else { out.push(...ls.slice(0,7)); out.push({g,name:'Autres',value:ls.slice(7).reduce((s,l)=>s+l.value,0)}); } }); leaves=out; }
+  const spent = leaves.reduce((s,l)=>s+l.value,0);
+  if(!spent && !fd.inc) return '<div class="empty">Aucune donnée pour cette période</div>';
+  const groups = GROUPS.map(([g,col])=>({g,col,value: g==='Non dépensé' ? Math.max(0,fd.inc-spent) : leaves.filter(l=>l.g===g).reduce((s,l)=>s+l.value,0)})).filter(x=>x.value>0.5);
+  const src = Math.max(fd.inc, spent);
+  const pad=8, minSlot=15, nL=leaves.length;
+  const Hmin = Math.max(260, nL*(minSlot+2)+ (groups.length-1)*4);
+  let k = (Hmin*0.8 - pad*(groups.length-1))/src;
+  // emplacement des feuilles
+  let y=0, lastG=null; leaves.forEach(l=>{ if(lastG && lastG!==l.g) y+=4; lastG=l.g; l.h=Math.max(1,l.value*k); const slot=Math.max(l.h,minSlot); l.y=y+(slot-l.h)/2; l.cy=y+slot/2; y+=slot+2; });
+  const Hl=y-2, Hg=src*k+pad*(groups.length-1), H=Math.max(Hl,Hg)+4;
+  const gTop=(H-Hg)/2, lTop=(H-Hl)/2;
+  leaves.forEach(l=>{ l.y+=lTop; l.cy+=lTop; });
+  const X0=0, W0=18, X1=138, W1=8, X2=226, W2=6;
+  const sTop = gTop, sH = src*k;
+  let gy=gTop, sy=sTop, links='', nodes='', labels='', lastLab=-99;
+  const rib=(xa,ya,xb,yb,h,col)=>{ const xm=(xa+xb)/2; return `<path d="M${xa},${ya}C${xm},${ya} ${xm},${yb} ${xb},${yb}L${xb},${yb+h}C${xm},${yb+h} ${xm},${ya+h} ${xa},${ya+h}Z" fill="${col}" opacity=".28"/>`; };
+  const halo='paint-order="stroke" stroke="var(--card)" stroke-width="3" stroke-linejoin="round"';
+  groups.forEach(G=>{
+    const h=G.value*k; G.y=gy;
+    links += rib(X0+W0, sy, X1, gy, h, G.col);
+    nodes += `<rect x="${X1}" y="${gy}" width="${W1}" height="${Math.max(h,1)}" rx="2" fill="${G.col}"><title>${esc(G.g)} : ${tl(G.value)}</title></rect>`;
+    let cy=Math.max(gy+h/2, (G.prevLab??-99)+0);
+    cy = Math.max(cy, lastLab+25); lastLab = cy;
+    labels += `<text x="${X1-5}" y="${cy-2}" text-anchor="end" font-size="10.5" font-weight="600" fill="var(--ink)" ${halo}>${esc(G.g)}</text><text x="${X1-5}" y="${cy+10}" text-anchor="end" font-size="10" fill="var(--mute)" ${halo}>${tl(G.value)}</text>`;
+    let oy=gy;
+    leaves.filter(l=>l.g===G.g).forEach(l=>{
+      links += rib(X1+W1, oy, X2, l.y, l.h, G.col); oy+=l.h;
+      nodes += `<rect x="${X2}" y="${l.y}" width="${W2}" height="${l.h}" rx="1.5" fill="${G.col}"><title>${esc(l.name)} : ${tl2(l.value)}</title></rect>`;
+      const nm = l.name.length>15 ? l.name.slice(0,14)+'…' : l.name;
+      labels += `<text x="${X2+W2+5}" y="${l.cy+3.5}" font-size="10" fill="var(--ink)">${esc(nm)} <tspan fill="var(--mute)">${tl(l.value)}</tspan></text>`;
+    });
+    sy+=h; gy+=h+pad;
+  });
+  nodes += `<rect x="${X0}" y="${sTop}" width="${W0}" height="${sH}" rx="3" fill="var(--pri)"/>`;
+  labels += `<text transform="translate(${X0+W0/2+4},${sTop+sH/2}) rotate(-90)" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff">${fd.inc>=spent?'Revenus ':'Dépenses '}${tl(src)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block" role="img" aria-label="Flux du budget">${links}${nodes}${labels}</svg>`;
+}
+function flowCard(){
+  if(!flowMode) flowMode = S.expenses.some(e=>e.src==='import') ? 'avg' : 'month';
+  const months = flowMode==='avg' ? avgMonths() : [repMonth];
+  const fd = flowData(months);
+  const spent = fd.leaves.reduce((s,l)=>s+l.value,0), left=fd.inc-spent;
+  const per = flowMode==='avg' ? (months.length>1 ? `Moyenne de ${months.length} mois · ${monthName(months[0])} → ${monthName(months[months.length-1])}` : monthName(months[0])) : monthName(repMonth);
+  return `<div class="card"><h2>Flux du budget</h2>
+    <div class="seg" id="flowSeg"><button data-f="month" class="${flowMode==='month'?'on':''}">Mois affiché</button><button data-f="avg" class="${flowMode==='avg'?'on':''}">Moyenne mensuelle</button></div>
+    <div class="note" style="margin-bottom:6px">${per} · revenus ${tl(fd.inc)} · dépenses ${tl(spent)}${fd.inc?` · <span class="${left<0?'neg':'pos'}">${left<0?'':'+'}${tl(left)}</span>`:''}</div>
+    ${sankeySVG(fd)}</div>`;
+}
 
 /* ================== FAB ================== */
 $('#fab').onclick=()=>{
