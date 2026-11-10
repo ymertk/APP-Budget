@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f766e">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Mon Budget">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
@@ -23,6 +25,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden;max-width:100%;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-x:none;touch-action:pan-y}
 body{position:relative}
+@media (display-mode: standalone){ header{padding-top:calc(max(env(safe-area-inset-top), 50px) + 6px) !important} }
 header{max-width:100%;position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(env(safe-area-inset-top) + 12px) 16px 8px;display:flex;align-items:center;justify-content:space-between}
 header h1{font-size:20px;margin:0}
 header small{color:var(--mute)}
@@ -797,6 +800,22 @@ async function readText(file){
   try { return new TextDecoder('utf-8',{fatal:true}).decode(buf).replace(/^﻿/,''); }
   catch(e){ return new TextDecoder('windows-1252').decode(buf); }
 }
+function detectLoans(all){
+  const num2 = s => parseAmt(String(s).replace(/\s/g,''));
+  const g={};
+  all.forEach(t=>{ const L=stripAcc(t.label).toUpperCase(); const m=L.match(/CAPITAL RESTANT\s*:?\s*([\d .,]+\d)/); if(!m) return;
+    const k=txKey(t.label.split(' - ')[0]); if(!g[k] || g[k].date<t.date) g[k]={date:t.date, restant:num2(m[1]), cap:num2((L.match(/CAPITAL AMORTI\s*:?\s*([\d .,]+\d)/)||[])[1]), int:num2((L.match(/INTERETS\s*:?\s*([\d .,]+\d)/)||[])[1]), amount:Math.abs(t.amount)}; });
+  let last=0;
+  Object.entries(g).forEach(([k,x])=>{ if(!isFinite(x.restant)) return;
+    const pay = isFinite(x.cap)&&isFinite(x.int) ? Math.round((x.cap+x.int)*100)/100 : x.amount;
+    const rate = isFinite(x.cap)&&isFinite(x.int) ? Math.round(x.int/(x.restant+x.cap)*1200*1000)/1000 : 0;
+    let d = S.debts.find(d=>d.match===k);
+    if(!d){ d={id:uid(), name:'Prêt immobilier', kind:'immo', match:k}; S.debts.push(d); }
+    if(!d.ref || x.date.slice(0,7)>=d.ref){ Object.assign(d,{balance:x.restant, ref:x.date.slice(0,7), payment:pay, rate}); }
+    last=x.restant;
+  });
+  return last;
+}
 const txHash = t => t.date+'|'+t.amount.toFixed(2);
 
 async function importFiles(files){
@@ -814,6 +833,7 @@ async function importFiles(files){
       <div class="actions"><button class="btn" data-close>OK</button></div>`);
     return;
   }
+  const loans = detectLoans(all);
   // doublons : comparés aux opérations déjà présentes et aux fichiers précédents du même import
   const known = {}; [...S.expenses, ...S.credits].forEach(x=>{ if(x.h) known[x.h]=(known[x.h]||0)+1; });
   const fresh=[]; let dup=0;
@@ -824,6 +844,7 @@ async function importFiles(files){
   });
   const deb=fresh.filter(t=>t.amount<0), cre=fresh.filter(t=>t.amount>0);
   const ds=fresh.map(t=>t.date).sort();
+  if(loans){ save(); if(!fresh.length){ render(); toast('Prêt mis à jour : capital restant '+tl(loans)); } }
   openSheet(`<form><h3>Importer les relevés</h3>
     ${fresh.length?`<table>
       <tr><td>Période</td><td>${ds.length?fmtDate(new Date(ds[0]+'T00:00'))+' → '+new Date(ds[ds.length-1]+'T00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):''}</td></tr>
@@ -1016,7 +1037,13 @@ const ASSET_TYPES = [['compte','Comptes courants'],['epargne','Épargne (livrets
 const ASSET_ICON = {compte:'🏦',epargne:'🐷',placement:'📈',crypto:'🪙',immobilier:'🏠',vehicule:'🚗',autre:'📦'};
 const COINS = [['bitcoin','Bitcoin (BTC)'],['ethereum','Ethereum (ETH)'],['solana','Solana (SOL)'],['ripple','XRP'],['cardano','Cardano (ADA)'],['binancecoin','BNB'],['dogecoin','Dogecoin (DOGE)'],['polkadot','Polkadot (DOT)'],['usd-coin','USDC'],['tether','USDT']];
 const typeName = t => (ASSET_TYPES.find(x=>x[0]===t)||[0,'Autre'])[1];
-function valAt(a, m){ const h=a.history||{}; const ks=Object.keys(h).filter(k=>k<=m).sort(); return ks.length ? +h[ks[ks.length-1]] : null; }
+function trackedFlow(from, to){ // somme des mouvements importés avec from < date <= to (dates AAAA-MM-JJ)
+  let s=0; S.expenses.forEach(e=>{ if(e.src==='import' && e.date>from && e.date<=to) s-=+e.amount; }); S.credits.forEach(c=>{ if(c.date>from && c.date<=to) s+=+c.amount; }); return s;
+}
+function valAt(a, m){
+  if(a.track && a.refDate){ const first=importedMonths()[0]; if(first && m<first && m<a.refDate.slice(0,7)) return null; const end=m+'-31';
+    return Math.round(((+a.refBalance||0) + (end>a.refDate ? trackedFlow(a.refDate,end) : -trackedFlow(end,a.refDate)))*100)/100; }
+  const h=a.history||{}; const ks=Object.keys(h).filter(k=>k<=m).sort(); return ks.length ? +h[ks[ks.length-1]] : null; }
 function debtAt(d, m){
   let B=+d.balance||0; const r=(+d.rate||0)/1200, P=+d.payment||0; if(!P) return B;
   const k=monthDiff(d.ref||thisYM(), m);
@@ -1029,7 +1056,7 @@ const assetsAt = m => S.assets.reduce((s,a)=>s+(valAt(a,m)||0),0);
 const debtsAt = m => S.debts.reduce((s,d)=>s+debtAt(d,m),0);
 const netAt = m => assetsAt(m) - debtsAt(m);
 function netMonths(){
-  const ks = S.assets.flatMap(a=>Object.keys(a.history||{})).sort();
+  const ks = S.assets.flatMap(a=>a.track&&a.refDate ? [importedMonths()[0]||a.refDate.slice(0,7)] : Object.keys(a.history||{})).filter(Boolean).sort();
   if(!ks.length) return [thisYM()];
   let first = ks[0]; const cur=thisYM(); if(monthDiff(first,cur)>23) first=addMonths(cur,-23);
   const out=[]; for(let m=first; m<=cur; m=addMonths(m,1)) out.push(m); return out;
@@ -1087,7 +1114,7 @@ function vPatri(){
   <div class="card"><h2>Avoirs <button class="btn sm ghost" id="addAsset">+ Ajouter</button></h2>
     ${S.assets.length? ASSET_TYPES.map(([t])=>S.assets.filter(a=>a.type===t)).flat().map(a=>{ const v=valAt(a,m)||0;
       return `<div class="row" data-asset="${a.id}"><div style="font-size:22px">${ASSET_ICON[a.type]||'📦'}</div><div class="grow"><div class="t">${esc(a.name)}</div>
-        <div class="s">${a.type==='crypto'&&a.qty?`${num(+a.qty,6)} × ${S.prices[a.coin]?tl2(S.prices[a.coin]):'?'} · `:''}${esc(typeName(a.type))}${a.updated?' · '+ago(a.updated):''}</div></div><div class="amt">${tl(v)}</div></div>`; }).join('')
+        <div class="s">${a.type==='crypto'&&a.qty?`${num(+a.qty,6)} × ${S.prices[a.coin]?tl2(S.prices[a.coin]):'?'} · `:''}${esc(typeName(a.type))}${a.track?' · 🔄 suivi avec les relevés':a.updated?' · '+ago(a.updated):''}</div></div><div class="amt">${tl(v)}</div></div>`; }).join('')
     : '<div class="empty">Aucun avoir</div>'}
   </div>
   <div class="card"><h2>Dettes <button class="btn sm ghost" id="addDebt">+ Ajouter</button></h2>
@@ -1121,7 +1148,10 @@ function assetForm(a){
   openSheet(`<form><h3>${isNew?'Nouvel avoir':'Modifier l\'avoir'}</h3>
     <label>Nom</label><input name="name" required value="${esc(a.name||'')}" placeholder="Ex. Livret A, PEA, Maison">
     <label>Type</label><select name="type" id="aType">${ASSET_TYPES.map(([v,n])=>`<option value="${v}" ${a.type===v?'selected':''}>${n}</option>`).join('')}</select>
-    <div id="aVal"><label>Valeur actuelle (€)</label><input name="value" type="number" inputmode="decimal" step="0.01" value="${cur??''}"></div>
+    <div id="aVal"><label id="aValL">Valeur actuelle (€)</label><input name="value" type="number" inputmode="decimal" step="0.01" value="${a.track?(a.refBalance??''):(cur??'')}"></div>
+    <div id="aTrack" style="display:none"><label style="display:flex;gap:10px;align-items:center;color:var(--ink);font-size:14px"><input type="checkbox" name="track" id="aTrk" ${a.track||isNew?'checked':''} style="width:22px;height:22px;flex:none"> Mettre à jour le solde automatiquement avec les relevés importés</label>
+      <div id="aRef"><label>Date de ce solde</label><input name="refDate" type="date" value="${esc(a.refDate||new Date().toISOString().slice(0,10))}">
+      <p class="note">Saisis le solde indiqué par ta banque à cette date (par ex. le « nouveau solde » du dernier relevé). Avec une carte à <b>débit différé</b>, retire l'encours carte pas encore prélevé. Ensuite, chaque import ajuste le solde tout seul.</p></div></div>
     <div id="aCoin" style="display:none"><div class="grid2"><div><label>Crypto</label><select name="coin">${COINS.map(([v,n])=>`<option value="${v}" ${a.coin===v?'selected':''}>${n}</option>`).join('')}</select></div>
       <div><label>Quantité</label><input name="qty" type="number" inputmode="decimal" step="any" min="0" value="${esc(a.qty||'')}"></div></div>
       <p class="note">Le cours en euros est mis à jour automatiquement quand le téléphone est connecté.</p></div>
@@ -1131,11 +1161,13 @@ function assetForm(a){
     const o = isNew ? {id:uid(), history:{}} : a;
     o.name=d.name; o.type=d.type; o.history=o.history||{};
     if(d.type==='crypto'){ o.coin=d.coin; o.qty=+d.qty||0; if(S.prices[o.coin]) o.value=Math.round(o.qty*S.prices[o.coin]*100)/100; o.history[thisYM()]=o.value||0; S.prices._t=0; setTimeout(()=>refreshCrypto(true),100); }
-    else { o.value=+d.value||0; o.history[thisYM()]=o.value; }
+    else if(d.type==='compte' && d.track){ o.track=true; o.refBalance=+d.value||0; o.refDate=d.refDate||new Date().toISOString().slice(0,10); o.value=valAt(o,thisYM()); }
+    else { o.track=false; o.value=+d.value||0; o.history[thisYM()]=o.value; }
     o.updated=Date.now();
     if(isNew) S.assets.push(o);
   });
-  const sync=()=>{ const c=$('#aType').value==='crypto'; $('#aCoin').style.display=c?'':'none'; $('#aVal').style.display=c?'none':''; };
+  const sync=()=>{ const t=$('#aType').value, c=t==='crypto', k=t==='compte'; $('#aCoin').style.display=c?'':'none'; $('#aVal').style.display=c?'none':''; $('#aTrack').style.display=k?'':'none'; const tr=k&&$('#aTrk').checked; $('#aRef').style.display=tr?'':'none'; $('#aValL').textContent = tr?'Solde à la date ci-dessous (€)':'Valeur actuelle (€)'; };
+  $('#aTrk').onchange=sync;
   $('#aType').onchange=sync; sync();
   if(!isNew) $('#aDel').onclick=()=>confirmSheet('Supprimer « '+a.name+' » ?',()=>S.assets=S.assets.filter(x=>x.id!==a.id));
 }
